@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>DibasPixAI — Secure Creative Suite</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #08080a;
+      color: #f8fafc;
+      margin: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
+      transition: background-color 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .architectural-grid {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(to right, rgba(255, 248, 235, 0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 248, 235, 0.025) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: radial-gradient(circle at 50% 50%, black 35%, transparent 95%);
+      -webkit-mask-image: radial-gradient(circle at 50% 50%, black 35%, transparent 95%);
+      z-index: 0;
+    }
+
+    .studio-bg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(
+          ellipse 60% 54% at 60% 50%,
+          rgba(245, 158, 11, 0.17) 0%,
+          rgba(217, 119, 6, 0.08) 44%,
+          rgba(8, 8, 10, 0.96) 78%,
+          #08080a 100%
+        ),
+        radial-gradient(
+          circle at 24% 38%,
+          rgba(255, 243, 224, 0.12) 0%,
+          transparent 45%
+        );
+      opacity: 0;
+      transition: opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+      z-index: 0;
+    }
+
+    @media (max-width: 1023px) {
+      .studio-bg {
+        background:
+          radial-gradient(
+            ellipse 85% 58% at 50% 62%,
+            rgba(245, 158, 11, 0.18) 0%,
+            rgba(217, 119, 6, 0.08) 46%,
+            rgba(8, 8, 10, 0.96) 82%,
+            #08080a 100%
+          );
+      }
+    }
+
+    body.lamp-on .studio-bg {
+      opacity: 1;
+    }
+
+    .desk-pool {
+      position: fixed;
+      bottom: -8%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 92vw;
+      max-width: 1040px;
+      height: 220px;
+      background: radial-gradient(
+        ellipse at center,
+        rgba(245, 158, 11, 0.15) 0%,
+        rgba(180, 83, 9, 0.05) 55%,
+        transparent 75%
+      );
+      filter: blur(22px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.7s ease;
+      z-index: 1;
+    }
+
+    body.lamp-on .desk-pool {
+      opacity: 1;
+    }
+
+    .light-cone {
+      opacity: 0;
+      transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+
+    body.lamp-on .light-cone {
+      opacity: 1;
+    }
+
+    .bulb-glow {
+      opacity: 0.06;
+      filter: drop-shadow(0 0 0px rgba(255, 183, 77, 0));
+      transition: opacity 0.35s ease, filter 0.45s ease;
+    }
+
+    body.lamp-on .bulb-glow {
+      opacity: 1;
+      filter: drop-shadow(0 0 26px rgba(255, 183, 77, 0.98));
+    }
+
+    #cord-handle {
+      cursor: grab;
+      touch-action: none;
+    }
+    #cord-handle:active {
+      cursor: grabbing;
+    }
+
+    @keyframes floatHint {
+      0%, 100% { transform: translateY(0px); opacity: 0.78; }
+      50% { transform: translateY(5px); opacity: 1; }
+    }
+
+    .pull-hint {
+      animation: floatHint 2.2s ease-in-out infinite;
+      transition: opacity 0.4s ease;
+    }
+
+    body.lamp-on .pull-hint {
+      opacity: 0 !important;
+      pointer-events: none;
+    }
+
+    .auth-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 720px;
+      height: 445px;
+      background: #100e0d;
+      border: 2px solid rgba(245, 158, 11, 0.18);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 28px 65px -16px rgba(0, 0, 0, 0.95);
+      transform: translateY(14px) scale(0.98);
+      opacity: 0.16;
+      filter: brightness(0.3) saturate(0.35);
+      pointer-events: none;
+      transition:
+        opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+        filter 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 0.55s ease,
+        box-shadow 0.55s ease;
+    }
+
+    body.lamp-on .auth-wrapper {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: brightness(1) saturate(1);
+      pointer-events: auto;
+      border-color: rgba(245, 158, 11, 0.75);
+      box-shadow:
+        0 28px 65px -12px rgba(0, 0, 0, 0.92),
+        0 0 32px rgba(245, 158, 11, 0.28),
+        inset 0 0 24px rgba(245, 158, 11, 0.08);
+    }
+
+    .card-light-sheen {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(
+        115% 110% at 0% 30%,
+        rgba(255, 243, 224, 0.13) 0%,
+        rgba(245, 158, 11, 0.06) 38%,
+        transparent 75%
+      );
+      opacity: 0;
+      transition: opacity 0.55s ease;
+      z-index: 25;
+    }
+
+    body.lamp-on .card-light-sheen {
+      opacity: 1;
+    }
+
+    .auth-wrapper .curved-shape {
+      position: absolute;
+      right: 0;
+      top: -5px;
+      height: 580px;
+      width: 820px;
+      background: linear-gradient(45deg, #100e0d 12%, #9a3412 58%, #f59e0b 100%);
+      border-bottom: 3px solid #fbbf24;
+      transform: rotate(10deg) skewY(40deg);
+      transform-origin: bottom right;
+      transition: 1.35s cubic-bezier(0.65, 0, 0.35, 1);
+      transition-delay: 1.15s;
+      z-index: 2;
+    }
+
+    .auth-wrapper.active .curved-shape {
+      transform: rotate(0deg) skewY(0deg);
+      transition-delay: 0.35s;
+    }
+
+    .auth-wrapper .curved-shape2 {
+      position: absolute;
+      left: 235px;
+      top: 100%;
+      height: 660px;
+      width: 820px;
+      background: #100e0d;
+      border-top: 3px solid #f59e0b;
+      transform: rotate(0deg) skewY(0deg);
+      transform-origin: bottom left;
+      transition: 1.35s cubic-bezier(0.65, 0, 0.35, 1);
+      transition-delay: 0.35s;
+      z-index: 3;
+    }
+
+    .auth-wrapper.active .curved-shape2 {
+      transform: rotate(-11deg) skewY(-41deg);
+      transition-delay: 0.95s;
+    }
+
+    .auth-wrapper .form-box {
+      position: absolute;
+      top: 0;
+      width: 50%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .auth-wrapper .form-box.Login {
+      left: 0;
+      padding: 0 36px 0 38px;
+    }
+
+    .auth-wrapper .form-box.Register {
+      right: 0;
+      padding: 0 38px 0 36px;
+      pointer-events: none;
+    }
+
+    .auth-wrapper.active .form-box.Login {
+      pointer-events: none;
+    }
+
+    .auth-wrapper.active .form-box.Register {
+      pointer-events: auto;
+    }
+
+    .auth-wrapper .form-box.Login .animation {
+      transform: translateX(0%);
+      opacity: 1;
+      filter: blur(0px);
+      transition: 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+      transition-delay: calc(0.09s * var(--j));
+    }
+
+    .auth-wrapper.active .form-box.Login .animation {
+      transform: translateX(-125%);
+      opacity: 0;
+      filter: blur(6px);
+      transition-delay: calc(0.08s * var(--i));
+    }
+
+    .auth-wrapper .form-box.Register .animation {
+      transform: translateX(125%);
+      opacity: 0;
+      filter: blur(6px);
+      transition: 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+      transition-delay: calc(0.08s * var(--j));
+    }
+
+    .auth-wrapper.active .form-box.Register .animation {
+      transform: translateX(0%);
+      opacity: 1;
+      filter: blur(0px);
+      transition-delay: calc(0.09s * var(--i));
+    }
+
+    .auth-wrapper .info-content {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .auth-wrapper .info-content.Login {
+      right: 0;
+      text-align: right;
+      padding: 0 34px 48px 115px;
+    }
+
+    .auth-wrapper .info-content.Login .animation {
+      transform: translateX(0);
+      opacity: 1;
+      filter: blur(0px);
+      transition: 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+      transition-delay: calc(0.09s * var(--j));
+    }
+
+    .auth-wrapper.active .info-content.Login .animation {
+      transform: translateX(125%);
+      opacity: 0;
+      filter: blur(6px);
+      transition-delay: calc(0.08s * var(--i));
+    }
+
+    .auth-wrapper .info-content.Register {
+      left: 0;
+      text-align: left;
+      padding: 0 115px 48px 34px;
+    }
+
+    .auth-wrapper .info-content.Register .animation {
+      transform: translateX(-125%);
+      opacity: 0;
+      filter: blur(6px);
+      transition: 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+      transition-delay: calc(0.08s * var(--j));
+    }
+
+    .auth-wrapper.active .info-content.Register .animation {
+      transform: translateX(0%);
+      opacity: 1;
+      filter: blur(0px);
+      transition-delay: calc(0.09s * var(--i));
+    }
+
+    .input-box {
+      position: relative;
+      width: 100%;
+      height: 46px;
+      margin-top: 20px;
+    }
+
+    .input-box input {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-size: 14px;
+      color: #f8fafc;
+      font-weight: 500;
+      border-bottom: 2px solid rgba(255, 243, 224, 0.25);
+      padding-right: 26px;
+      transition: border-color 0.35s ease;
+    }
+
+    .input-box input:focus,
+    .input-box input:not(:placeholder-shown) {
+      border-bottom-color: #f59e0b;
+    }
+
+    .input-box label {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      transform: translateY(-50%);
+      font-size: 13.5px;
+      color: #a8a29e;
+      pointer-events: none;
+      transition: 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .input-box input:focus ~ label,
+    .input-box input:not(:placeholder-shown) ~ label {
+      top: -4px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #fbbf24;
+    }
+
+    .input-box .field-icon {
+      position: absolute;
+      top: 50%;
+      right: 0;
+      transform: translateY(-50%);
+      width: 17px;
+      height: 17px;
+      color: #a8a29e;
+      transition: color 0.35s ease;
+      pointer-events: none;
+    }
+
+    .input-box input:focus ~ .field-icon,
+    .input-box input:not(:placeholder-shown) ~ .field-icon {
+      color: #fbbf24;
+    }
+
+    .btn-slide {
+      position: relative;
+      width: 100%;
+      height: 42px;
+      background: transparent;
+      border-radius: 9999px;
+      cursor: pointer;
+      font-size: 14.5px;
+      font-weight: 600;
+      color: #fffbeb;
+      border: 2px solid #f59e0b;
+      overflow: hidden;
+      z-index: 1;
+      letter-spacing: 0.02em;
+      transition: transform 0.15s ease, box-shadow 0.3s ease;
+    }
+
+    .btn-slide:hover {
+      box-shadow: 0 0 18px rgba(245, 158, 11, 0.4);
+    }
+
+    .btn-slide:active {
+      transform: scale(0.98);
+    }
+
+    .btn-slide::before {
+      content: "";
+      position: absolute;
+      height: 300%;
+      width: 100%;
+      background: linear-gradient(#100e0d, #d97706, #100e0d, #f59e0b);
+      top: -100%;
+      left: 0;
+      z-index: -1;
+      transition: 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .btn-slide:hover::before {
+      top: 0;
+    }
+
+    @media (max-width: 767px) {
+      .auth-wrapper {
+        height: 430px;
+        max-width: 410px;
+      }
+      .auth-wrapper .form-box {
+        width: 100%;
+      }
+      .auth-wrapper .form-box.Login,
+      .auth-wrapper .form-box.Register {
+        padding: 0 28px;
+      }
+      .auth-wrapper .info-content {
+        display: none;
+      }
+      .auth-wrapper .curved-shape {
+        right: -120px;
+        top: -120px;
+        height: 340px;
+        width: 520px;
+        opacity: 0.32;
+        transform: rotate(14deg) skewY(26deg);
+      }
+      .auth-wrapper.active .curved-shape {
+        transform: rotate(-14deg) skewY(-26deg);
+      }
+      .auth-wrapper .curved-shape2 {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-[#08080a] text-slate-50">
+
+  <!-- VIEW 1: LOCKED AUTHENTICATION GATE -->
+  <div id="auth-gate" class="flex items-center justify-center min-h-screen p-4 sm:p-6 lg:p-8 select-none relative">
+    <div class="architectural-grid"></div>
+    <div class="studio-bg"></div>
+    <div class="desk-pool"></div>
+
+    <button
+      id="sound-toggle-btn"
+      type="button"
+      aria-label="Toggle Sound Effects"
+      class="fixed top-4 right-4 z-30 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs text-stone-300 transition-colors cursor-pointer"
+    >
+      <svg id="sound-icon-on" class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+      </svg>
+      <svg id="sound-icon-off" class="w-3.5 h-3.5 text-stone-500 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+        <path stroke-linecap="round" stroke-linejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+      </svg>
+      <span id="sound-label" class="hidden sm:inline">Sound On</span>
+    </button>
+
+    <main class="relative z-10 w-full max-w-6xl mx-auto flex flex-col lg:flex-row items-center justify-center gap-4 sm:gap-6 lg:gap-8">
+      <!-- Desk Lamp -->
+      <section class="relative flex flex-col items-center justify-center w-full max-w-[290px] sm:max-w-[320px] lg:w-[32%] shrink-0">
+        <svg id="lamp-svg" viewBox="0 0 360 430" class="w-full h-auto overflow-visible drop-shadow-2xl">
+          <defs>
+            <linearGradient id="brassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fde68a" />
+              <stop offset="38%" stop-color="#d4af37" />
+              <stop offset="75%" stop-color="#b45309" />
+              <stop offset="100%" stop-color="#78350f" />
+            </linearGradient>
+            <linearGradient id="gunmetalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#2e2d2b" />
+              <stop offset="48%" stop-color="#171615" />
+              <stop offset="100%" stop-color="#0b0a0a" />
+            </linearGradient>
+            <radialGradient id="tungstenInnerGlow" cx="56%" cy="62%" r="62%">
+              <stop offset="0%" stop-color="#fffbeb" />
+              <stop offset="35%" stop-color="#fde68a" />
+              <stop offset="72%" stop-color="#f59e0b" />
+              <stop offset="100%" stop-color="#78350f" />
+            </radialGradient>
+            <linearGradient id="desktopBeamOuter" x1="0%" y1="15%" x2="100%" y2="48%">
+              <stop offset="0%" stop-color="rgba(255, 224, 166, 0.38)" />
+              <stop offset="35%" stop-color="rgba(255, 183, 77, 0.16)" />
+              <stop offset="75%" stop-color="rgba(245, 158, 11, 0.05)" />
+              <stop offset="100%" stop-color="rgba(245, 158, 11, 0)" />
+            </linearGradient>
+            <linearGradient id="desktopBeamCore" x1="0%" y1="20%" x2="100%" y2="50%">
+              <stop offset="0%" stop-color="rgba(255, 248, 231, 0.45)" />
+              <stop offset="45%" stop-color="rgba(255, 198, 107, 0.14)" />
+              <stop offset="100%" stop-color="rgba(245, 158, 11, 0)" />
+            </linearGradient>
+            <linearGradient id="mobileBeamGrad" x1="50%" y1="0%" x2="50%" y2="100%">
+              <stop offset="0%" stop-color="rgba(255, 236, 195, 0.42)" />
+              <stop offset="45%" stop-color="rgba(255, 183, 77, 0.16)" />
+              <stop offset="100%" stop-color="rgba(245, 158, 11, 0)" />
+            </linearGradient>
+            <filter id="beamBlur" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="7" />
+            </filter>
+          </defs>
+
+          <g class="light-cone hidden lg:block">
+            <polygon points="178,162 246,96 760,10 760,460 152,330" fill="url(#desktopBeamOuter)" filter="url(#beamBlur)" />
+            <polygon points="186,154 238,106 720,68 720,400 168,282" fill="url(#desktopBeamCore)" />
+          </g>
+
+          <g class="light-cone lg:hidden">
+            <polygon points="162,155 244,112 375,560 -15,560" fill="url(#mobileBeamGrad)" filter="url(#beamBlur)" />
+          </g>
+
+          <ellipse cx="126" cy="396" rx="70" ry="12" fill="rgba(0,0,0,0.82)" />
+          <path d="M 66 388 C 66 374, 186 374, 186 388 L 190 395 C 190 402, 62 402, 62 395 Z" fill="url(#gunmetalGrad)" />
+          <ellipse cx="126" cy="387" rx="60" ry="9.5" fill="#252321" />
+          <ellipse cx="126" cy="387" rx="60" ry="9.5" fill="none" stroke="rgba(212, 175, 55, 0.25)" stroke-width="1" />
+          <ellipse cx="126" cy="385" rx="22" ry="4.5" fill="url(#brassGrad)" />
+
+          <g stroke-linecap="round">
+            <line x1="126" y1="383" x2="90" y2="266" stroke="#121110" stroke-width="11" />
+            <line x1="126" y1="383" x2="90" y2="266" stroke="#2d2b29" stroke-width="3.5" />
+            <line x1="135" y1="381" x2="99" y2="266" stroke="url(#brassGrad)" stroke-width="2.4" />
+          </g>
+
+          <circle cx="92" cy="264" r="11" fill="#171615" stroke="url(#brassGrad)" stroke-width="3" />
+          <circle cx="92" cy="264" r="4" fill="url(#brassGrad)" />
+
+          <g stroke-linecap="round">
+            <line x1="92" y1="264" x2="146" y2="134" stroke="#121110" stroke-width="10" />
+            <line x1="92" y1="264" x2="146" y2="134" stroke="#2d2b29" stroke-width="3.5" />
+            <line x1="100" y1="266" x2="153" y2="137" stroke="url(#brassGrad)" stroke-width="2.2" />
+          </g>
+
+          <circle cx="149" cy="133" r="9.5" fill="#171615" stroke="url(#brassGrad)" stroke-width="2.6" />
+          <circle cx="149" cy="133" r="3.5" fill="url(#brassGrad)" />
+          <line x1="149" y1="133" x2="176" y2="115" stroke="url(#brassGrad)" stroke-width="7" stroke-linecap="round" />
+
+          <g transform="rotate(-34 198 124)">
+            <path d="M 170 110 C 170 95, 196 95, 196 110 Z" fill="url(#brassGrad)" />
+            <path d="M 156 110 C 156 66, 240 66, 240 110 L 250 144 L 146 144 Z" fill="url(#gunmetalGrad)" />
+            <path d="M 160 108 C 163 72, 232 72, 236 108" fill="none" stroke="rgba(255, 243, 224, 0.16)" stroke-width="2" />
+            <ellipse cx="198" cy="144" rx="52" ry="13.5" fill="#0d0c0b" stroke="url(#brassGrad)" stroke-width="1.5" />
+            <ellipse class="bulb-glow" cx="198" cy="144" rx="50" ry="12.5" fill="url(#tungstenInnerGlow)" />
+            <ellipse class="bulb-glow" cx="198" cy="141" rx="18" ry="9.5" fill="#fffbeb" />
+          </g>
+
+          <circle cx="204" cy="142" r="3.2" fill="url(#brassGrad)" />
+          <line id="cord-line" x1="204" y1="142" x2="204" y2="226" stroke="url(#brassGrad)" stroke-width="2.4" stroke-linecap="round" />
+
+          <g id="cord-handle" transform="translate(204, 226)">
+            <circle cx="0" cy="8" r="34" fill="transparent" />
+            <circle cx="0" cy="8" r="14" fill="rgba(245, 158, 11, 0.12)" stroke="rgba(251, 191, 36, 0.45)" stroke-width="1.4" />
+            <rect x="-3" y="-1" width="6" height="4" rx="1.5" fill="url(#brassGrad)" />
+            <ellipse cx="0" cy="9" rx="7" ry="9" fill="url(#brassGrad)" />
+            <ellipse cx="-2.2" cy="6" rx="1.8" ry="3.2" fill="rgba(255, 251, 235, 0.72)" />
+          </g>
+        </svg>
+
+        <div id="hint-badge" class="pull-hint -mt-3 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/[0.08] border border-amber-400/25 text-xs text-amber-200/90 tracking-wide shadow-lg">
+          <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+          <span>Pull the cord down to unlock DibasPixAI</span>
+        </div>
+      </section>
+
+      <!-- Diagonal Split Sliding Login / Register Card -->
+      <section class="w-full flex justify-center lg:w-[68%]">
+        <div id="auth-wrapper" class="auth-wrapper">
+          <div class="card-light-sheen"></div>
+          <div class="curved-shape"></div>
+          <div class="curved-shape2"></div>
+
+          <div
+            id="status-toast"
+            class="hidden absolute top-3.5 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 rounded-full text-xs font-medium bg-stone-950/95 border border-amber-400/50 text-amber-200 shadow-lg whitespace-nowrap"
+          ></div>
+
+          <!-- LOGIN FORM -->
+          <div class="form-box Login">
+            <h2 class="animation text-2xl sm:text-3xl font-bold text-center text-slate-50 tracking-tight mb-1" style="--i:0; --j:21">
+              Login
+            </h2>
+
+            <form id="login-form" novalidate>
+              <div class="input-box animation" style="--i:1; --j:22">
+                <input id="login-user" type="text" autocomplete="username" placeholder=" " required />
+                <label for="login-user">Username</label>
+                <svg class="field-icon" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+                </svg>
+              </div>
+
+              <div class="input-box animation" style="--i:2; --j:23">
+                <input id="login-pass" type="password" autocomplete="current-password" placeholder=" " required />
+                <label for="login-pass">Password</label>
+                <svg class="field-icon" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+                </svg>
+              </div>
+
+              <div class="animation mt-6" style="--i:3; --j:24">
+                <button class="btn-slide" type="submit">Enter Studio</button>
+              </div>
+
+              <div class="animation text-center text-xs text-stone-300 mt-4" style="--i:4; --j:25">
+                <p>
+                  Don't have an account? <br />
+                  <a href="#" id="go-register" class="text-amber-400 hover:text-amber-300 font-semibold hover:underline transition-colors">
+                    Sign Up
+                  </a>
+                </p>
+              </div>
+            </form>
+          </div>
+
+          <div class="info-content Login">
+            <h2 class="animation text-2xl xl:text-[28px] font-extrabold uppercase leading-tight text-white drop-shadow" style="--i:0; --j:20">
+              DIBASPIXAI
+            </h2>
+            <p class="animation text-xs xl:text-[13px] text-amber-50/90 mt-2.5 leading-relaxed" style="--i:1; --j:21">
+              Sign in with your encrypted credentials to unlock AI Photo Repair, Portrait Retouch & 4K Upscaling.
+            </p>
+          </div>
+
+          <!-- REGISTER FORM -->
+          <div class="form-box Register">
+            <h2 class="animation text-2xl sm:text-3xl font-bold text-center text-slate-50 tracking-tight mb-0.5" style="--i:17; --j:0">
+              Register
+            </h2>
+
+            <form id="register-form" novalidate>
+              <div class="input-box animation" style="--i:18; --j:1">
+                <input id="reg-user" type="text" autocomplete="username" placeholder=" " required />
+                <label for="reg-user">Username</label>
+                <svg class="field-icon" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+                </svg>
+              </div>
+
+              <div class="input-box animation" style="--i:19; --j:2">
+                <input id="reg-email" type="email" autocomplete="email" placeholder=" " required />
+                <label for="reg-email">Email</label>
+                <svg class="field-icon" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                </svg>
+              </div>
+
+              <div class="input-box animation" style="--i:20; --j:3">
+                <input id="reg-pass" type="password" autocomplete="new-password" placeholder=" " required />
+                <label for="reg-pass">Password (min 6 chars)</label>
+                <svg class="field-icon" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+                </svg>
+              </div>
+
+              <div class="animation mt-5" style="--i:21; --j:4">
+                <button class="btn-slide" type="submit">Create Account</button>
+              </div>
+
+              <div class="animation text-center text-xs text-stone-300 mt-3.5" style="--i:22; --j:5">
+                <p>
+                  Already have an account? <br />
+                  <a href="#" id="go-login" class="text-amber-400 hover:text-amber-300 font-semibold hover:underline transition-colors">
+                    Sign In
+                  </a>
+                </p>
+              </div>
+            </form>
+          </div>
+
+          <div class="info-content Register">
+            <h2 class="animation text-2xl xl:text-[28px] font-extrabold uppercase leading-tight text-white drop-shadow" style="--i:17; --j:0">
+              JOIN STUDIO!
+            </h2>
+            <p class="animation text-xs xl:text-[13px] text-amber-50/90 mt-2.5 leading-relaxed" style="--i:18; --j:1">
+              Create your creator account with SHA-256 encryption and get 25 free AI studio credits.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- VIEW 2: LOCKED DIBASPIXAI DASHBOARD -->
+  <div id="studio-dashboard" class="hidden min-h-screen bg-[#0c0c0e] text-white flex flex-col">
+    <header class="sticky top-0 z-40 bg-[#0c0c0e]/90 backdrop-blur-md border-b border-white/10 px-4 sm:px-6 py-3.5 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-purple-500 flex items-center justify-center font-black text-black">D</div>
+        <div>
+          <h1 class="text-lg font-extrabold tracking-tight leading-none">DibasPix<span class="text-amber-400">AI</span></h1>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span class="px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-xs font-semibold">
+          ✦ <span id="user-credits">25</span> Credits
+        </span>
+        <span id="user-badge" class="hidden sm:inline text-xs text-stone-300 font-medium"></span>
+        <button id="logout-btn" class="px-3 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 text-xs font-semibold cursor-pointer transition">
+          Logout
+        </button>
+      </div>
+    </header>
+
+    <main class="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 space-y-6">
+      <div class="grid grid-cols-2 gap-3.5">
+        <label class="cursor-pointer bg-[#1c1c21] hover:bg-[#25252c] border border-white/10 rounded-2xl p-4 flex items-center justify-center gap-2.5 font-bold text-base transition">
+          <span>✂️ Edit Photo</span>
+          <input id="photo-upload" type="file" accept="image/*" class="hidden" />
+        </label>
+        <button id="btn-auto-retouch" class="bg-white text-black hover:bg-amber-100 rounded-2xl p-4 flex items-center justify-center gap-2.5 font-bold text-base transition cursor-pointer">
+          <span>✨ AI Retouch</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-[#141418] border border-white/10 rounded-2xl p-4 flex flex-col items-center justify-center min-h-[340px] relative">
+          <canvas id="editor-canvas" class="max-w-full max-h-[380px] rounded-xl hidden shadow-2xl"></canvas>
+          <div id="empty-canvas-msg" class="text-center space-y-2 py-12">
+            <p class="text-stone-400 text-sm">Upload a photo to activate AI Quality Enhancer, Portrait Retouch & Filters</p>
+            <button onclick="document.getElementById('photo-upload').click()" class="px-4 py-2 rounded-full bg-amber-500 text-black font-semibold text-xs cursor-pointer">
+              Choose Image
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-[#141418] border border-white/10 rounded-2xl p-4 space-y-5">
+          <div>
+            <h3 class="text-xs font-bold uppercase tracking-wider text-amber-400 mb-3">Photo Repair & AI Tools</h3>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <button data-preset="hd" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">HD Quality</button>
+              <button data-preset="retouch" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">AI Retouch</button>
+              <button data-preset="night" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">Night View</button>
+              <button data-preset="vivid" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">AI Color</button>
+            </div>
+          </div>
+
+          <div class="space-y-3 text-xs">
+            <div>
+              <div class="flex justify-between text-stone-400 mb-1"><span>Brightness</span><span id="val-bright">100%</span></div>
+              <input id="sl-bright" type="range" min="50" max="160" value="100" class="w-full accent-amber-400" />
+            </div>
+            <div>
+              <div class="flex justify-between text-stone-400 mb-1"><span>Contrast / Clarity</span><span id="val-contrast">100%</span></div>
+              <input id="sl-contrast" type="range" min="50" max="170" value="100" class="w-full accent-amber-400" />
+            </div>
+            <div>
+              <div class="flex justify-between text-stone-400 mb-1"><span>Skin Warmth / Glow</span><span id="val-sat">100%</span></div>
+              <input id="sl-sat" type="range" min="0" max="180" value="100" class="w-full accent-amber-400" />
+            </div>
+          </div>
+
+          <button id="export-btn" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black font-bold text-sm cursor-pointer hover:opacity-95 transition">
+            Export Enhanced Photo
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/security.js"></script>
+  <script>
+    let audioCtx = null;
+    let isSoundEnabled = true;
+
+    const soundToggleBtn = document.getElementById('sound-toggle-btn');
+    const soundIconOn = document.getElementById('sound-icon-on');
+    const soundIconOff = document.getElementById('sound-icon-off');
+    const soundLabel = document.getElementById('sound-label');
+
+    soundToggleBtn.addEventListener('click', () => {
+      isSoundEnabled = !isSoundEnabled;
+      soundIconOn.classList.toggle('hidden', !isSoundEnabled);
+      soundIconOff.classList.toggle('hidden', isSoundEnabled);
+      soundLabel.textContent = isSoundEnabled ? 'Sound On' : 'Muted';
+    });
+
+    function playLampSound(turningOn) {
+      if (!isSoundEnabled) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const clickOsc = audioCtx.createOscillator();
+        const clickGain = audioCtx.createGain();
+        clickOsc.type = 'triangle';
+        clickOsc.frequency.setValueAtTime(turningOn ? 940 : 620, now);
+        clickOsc.frequency.exponentialRampToValueAtTime(145, now + 0.036);
+        clickGain.gain.setValueAtTime(0.22, now);
+        clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.042);
+        clickOsc.connect(clickGain);
+        clickGain.connect(audioCtx.destination);
+        clickOsc.start(now);
+        clickOsc.stop(now + 0.046);
+      } catch {}
+    }
+
+    const lampSvg = document.getElementById('lamp-svg');
+    const cordLine = document.getElementById('cord-line');
+    const cordHandle = document.getElementById('cord-handle');
+    const ANCHOR_X = 204, ANCHOR_Y = 142, REST_LENGTH = 84, TRIGGER_PULL_DISTANCE = 42;
+    let isLampOn = false, isDragging = false, hasTriggeredThisPull = false;
+    let dragStartPointer = { x: 0, y: 0 }, dragStartTime = 0;
+    let posX = ANCHOR_X, posY = ANCHOR_Y + REST_LENGTH, velX = 0, velY = 0;
+
+    function toggleLampState() {
+      isLampOn = !isLampOn;
+      document.body.classList.toggle('lamp-on', isLampOn);
+      playLampSound(isLampOn);
+    }
+
+    function clientToSvgCoords(clientX, clientY) {
+      const rect = lampSvg.getBoundingClientRect();
+      return {
+        x: (clientX - rect.left) * (360 / rect.width),
+        y: (clientY - rect.top) * (430 / rect.height)
+      };
+    }
+
+    function onDragStart(clientX, clientY) {
+      isDragging = true;
+      hasTriggeredThisPull = false;
+      velX = 0; velY = 0;
+      dragStartPointer = { x: clientX, y: clientY };
+      dragStartTime = performance.now();
+    }
+
+    function onDragMove(clientX, clientY) {
+      if (!isDragging) return;
+      const svgPt = clientToSvgCoords(clientX, clientY);
+      const dx = Math.max(-45, Math.min(45, svgPt.x - ANCHOR_X));
+      const dy = Math.max(45, Math.min(165, svgPt.y - ANCHOR_Y));
+      posX = ANCHOR_X + dx * 0.65;
+      posY = ANCHOR_Y + dy;
+      if (dy - REST_LENGTH >= TRIGGER_PULL_DISTANCE && !hasTriggeredThisPull) {
+        hasTriggeredThisPull = true;
+        toggleLampState();
+      }
+    }
+
+    function onDragEnd(clientX, clientY) {
+      if (!isDragging) return;
+      isDragging = false;
+      const elapsed = performance.now() - dragStartTime;
+      const movedDist = Math.hypot((clientX || dragStartPointer.x) - dragStartPointer.x, (clientY || dragStartPointer.y) - dragStartPointer.y);
+      if (!hasTriggeredThisPull && elapsed < 260 && movedDist < 12) {
+        velY = 14;
+        toggleLampState();
+      }
+    }
+
+    cordHandle.addEventListener('mousedown', e => { e.preventDefault(); onDragStart(e.clientX, e.clientY); });
+    window.addEventListener('mousemove', e => { if (isDragging) onDragMove(e.clientX, e.clientY); });
+    window.addEventListener('mouseup', e => { if (isDragging) onDragEnd(e.clientX, e.clientY); });
+    cordHandle.addEventListener('touchstart', e => { if (e.touches.length) { e.preventDefault(); onDragStart(e.touches[0].clientX, e.touches[0].clientY); } }, { passive: false });
+    window.addEventListener('touchmove', e => { if (isDragging && e.touches.length) { e.preventDefault(); onDragMove(e.touches[0].clientX, e.touches[0].clientY); } }, { passive: false });
+    window.addEventListener('touchend', e => { if (isDragging) { const t = e.changedTouches[0]; onDragEnd(t ? t.clientX : dragStartPointer.x, t ? t.clientY : dragStartPointer.y); } });
+
+    function animateCord() {
+      if (!isDragging) {
+        velX = (velX + (ANCHOR_X - posX) * 0.16) * 0.78;
+        velY = (velY + (ANCHOR_Y + REST_LENGTH - posY) * 0.16) * 0.78;
+        posX += velX;
+        posY += velY;
+      }
+      cordLine.setAttribute('x2', posX.toFixed(2));
+      cordLine.setAttribute('y2', posY.toFixed(2));
+      cordHandle.setAttribute('transform', `translate(${posX.toFixed(2)}, ${posY.toFixed(2)})`);
+      requestAnimationFrame(animateCord);
+    }
+
+    const authGate = document.getElementById('auth-gate');
+    const studioDashboard = document.getElementById('studio-dashboard');
+    const authWrapper = document.getElementById('auth-wrapper');
+    const statusToast = document.getElementById('status-toast');
+
+    let toastTimer = null;
+    function showToast(message) {
+      statusToast.textContent = message;
+      statusToast.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => statusToast.classList.add('hidden'), 3400);
+    }
+
+    function enforceSecurityGate() {
+      const session = StudioSecurity.getActiveSession();
+      if (!session) {
+        studioDashboard.classList.add('hidden');
+        authGate.classList.remove('hidden');
+        return false;
+      }
+      authGate.classList.add('hidden');
+      studioDashboard.classList.remove('hidden');
+      document.getElementById('user-badge').textContent = `@${session.username}`;
+      document.getElementById('user-credits').textContent = session.credits;
+      return true;
+    }
+
+    document.getElementById('go-register').addEventListener('click', e => {
+      e.preventDefault();
+      statusToast.classList.add('hidden');
+      authWrapper.classList.add('active');
+    });
+
+    document.getElementById('go-login').addEventListener('click', e => {
+      e.preventDefault();
+      statusToast.classList.add('hidden');
+      authWrapper.classList.remove('active');
+    });
+
+    document.getElementById('login-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const username = document.getElementById('login-user').value;
+      const password = document.getElementById('login-pass').value;
+      const res = await StudioSecurity.loginUser({ username, password });
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      document.getElementById('login-pass').value = '';
+      enforceSecurityGate();
+    });
+
+    document.getElementById('register-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const username = document.getElementById('reg-user').value;
+      const email = document.getElementById('reg-email').value;
+      const password = document.getElementById('reg-pass').value;
+      const res = await StudioSecurity.registerUser({ username, email, password });
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      document.getElementById('reg-pass').value = '';
+      enforceSecurityGate();
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', () => {
+      StudioSecurity.logout();
+      enforceSecurityGate();
+    });
+
+    const canvas = document.getElementById('editor-canvas');
+    const ctx = canvas.getContext('2d');
+    const slBright = document.getElementById('sl-bright');
+    const slContrast = document.getElementById('sl-contrast');
+    const slSat = document.getElementById('sl-sat');
+    let loadedImg = null;
+
+    function renderImage() {
+      if (!loadedImg) return;
+      document.getElementById('val-bright').textContent = `${slBright.value}%`;
+      document.getElementById('val-contrast').textContent = `${slContrast.value}%`;
+      document.getElementById('val-sat').textContent = `${slSat.value}%`;
+      ctx.filter = `brightness(${slBright.value}%) contrast(${slContrast.value}%) saturate(${slSat.value}%)`;
+      ctx.drawImage(loadedImg, 0, 0, canvas.width, canvas.height);
+    }
+
+    document.getElementById('photo-upload').addEventListener('change', e => {
+      if (!enforceSecurityGate()) return;
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          loadedImg = img;
+          canvas.width = img.width;
+          canvas.height = img.height;
+          canvas.classList.remove('hidden');
+          document.getElementById('empty-canvas-msg').classList.add('hidden');
+          renderImage();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    [slBright, slContrast, slSat].forEach(sl => sl.addEventListener('input', renderImage));
+
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!enforceSecurityGate() || !loadedImg) return;
+        const preset = btn.dataset.preset;
+        if (preset === 'hd') { slBright.value = 106; slContrast.value = 128; slSat.value = 112; }
+        if (preset === 'retouch') { slBright.value = 112; slContrast.value = 104; slSat.value = 115; }
+        if (preset === 'night') { slBright.value = 132; slContrast.value = 118; slSat.value = 108; }
+        if (preset === 'vivid') { slBright.value = 105; slContrast.value = 120; slSat.value = 145; }
+        renderImage();
+      });
+    });
+
+    document.getElementById('btn-auto-retouch').addEventListener('click', () => {
+      if (!enforceSecurityGate() || !loadedImg) return;
+      slBright.value = 112; slContrast.value = 108; slSat.value = 116;
+      renderImage();
+    });
+
+    document.getElementById('export-btn').addEventListener('click', () => {
+      if (!enforceSecurityGate() || !loadedImg) return;
+      const link = document.createElement('a');
+      link.download = `dibaspixai-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+
+    window.addEventListener('load', () => {
+      animateCord();
+      enforceSecurityGate();
+    });
+  </script>
+</body>
+</html>
