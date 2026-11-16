@@ -735,7 +735,7 @@
     </main>
   </div>
 
-  <!-- VIEW 2: LOCKED DIBASPIXAI DASHBOARD -->
+  <!-- VIEW 2: DIBASPIXAI DASHBOARD -->
   <div id="studio-dashboard" class="hidden min-h-screen bg-[#0c0c0e] text-white flex flex-col">
     <header class="sticky top-0 z-40 bg-[#0c0c0e]/90 backdrop-blur-md border-b border-white/10 px-4 sm:px-6 py-3.5 flex items-center justify-between">
       <div class="flex items-center gap-2.5">
@@ -762,7 +762,7 @@
           <span>✂️ Edit Photo</span>
           <input id="photo-upload" type="file" accept="image/*" class="hidden" />
         </label>
-        <button id="btn-auto-retouch" class="bg-white text-black hover:bg-amber-100 rounded-2xl p-4 flex items-center justify-center gap-2.5 font-bold text-base transition cursor-pointer">
+        <button id="btn-auto-retouch" type="button" class="bg-white text-black hover:bg-amber-100 rounded-2xl p-4 flex items-center justify-center gap-2.5 font-bold text-base transition cursor-pointer">
           <span>✨ AI Retouch</span>
         </button>
       </div>
@@ -772,7 +772,7 @@
           <canvas id="editor-canvas" class="max-w-full max-h-[380px] rounded-xl hidden shadow-2xl"></canvas>
           <div id="empty-canvas-msg" class="text-center space-y-2 py-12">
             <p class="text-stone-400 text-sm">Upload a photo to activate AI Quality Enhancer, Portrait Retouch & Filters</p>
-            <button onclick="document.getElementById('photo-upload').click()" class="px-4 py-2 rounded-full bg-amber-500 text-black font-semibold text-xs cursor-pointer">
+            <button type="button" onclick="document.getElementById('photo-upload').click()" class="px-4 py-2 rounded-full bg-amber-500 text-black font-semibold text-xs cursor-pointer">
               Choose Image
             </button>
           </div>
@@ -782,10 +782,10 @@
           <div>
             <h3 class="text-xs font-bold uppercase tracking-wider text-amber-400 mb-3">Photo Repair & AI Tools</h3>
             <div class="grid grid-cols-2 gap-2 text-xs">
-              <button data-preset="hd" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">HD Quality</button>
-              <button data-preset="retouch" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">AI Retouch</button>
-              <button data-preset="night" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">Night View</button>
-              <button data-preset="vivid" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">AI Color</button>
+              <button type="button" data-preset="hd" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">HD Quality</button>
+              <button type="button" data-preset="retouch" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">AI Retouch</button>
+              <button type="button" data-preset="night" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">Night View</button>
+              <button type="button" data-preset="vivid" class="tool-btn p-2.5 rounded-xl bg-white/5 hover:bg-amber-500/20 border border-white/10 text-left font-medium">AI Color</button>
             </div>
           </div>
 
@@ -804,7 +804,7 @@
             </div>
           </div>
 
-          <button id="export-btn" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black font-bold text-sm cursor-pointer hover:opacity-95 transition">
+          <button id="export-btn" type="button" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black font-bold text-sm cursor-pointer hover:opacity-95 transition">
             Export Enhanced Photo
           </button>
         </div>
@@ -813,6 +813,7 @@
   </div>
 
   <script src="js/security.js"></script>
+  <script src="js/studio-app.js"></script>
   <script>
     let audioCtx = null;
     let isSoundEnabled = true;
@@ -992,70 +993,6 @@
     document.getElementById('logout-btn').addEventListener('click', () => {
       StudioSecurity.logout();
       enforceSecurityGate();
-    });
-
-    const canvas = document.getElementById('editor-canvas');
-    const ctx = canvas.getContext('2d');
-    const slBright = document.getElementById('sl-bright');
-    const slContrast = document.getElementById('sl-contrast');
-    const slSat = document.getElementById('sl-sat');
-    let loadedImg = null;
-
-    function renderImage() {
-      if (!loadedImg) return;
-      document.getElementById('val-bright').textContent = `${slBright.value}%`;
-      document.getElementById('val-contrast').textContent = `${slContrast.value}%`;
-      document.getElementById('val-sat').textContent = `${slSat.value}%`;
-      ctx.filter = `brightness(${slBright.value}%) contrast(${slContrast.value}%) saturate(${slSat.value}%)`;
-      ctx.drawImage(loadedImg, 0, 0, canvas.width, canvas.height);
-    }
-
-    document.getElementById('photo-upload').addEventListener('change', e => {
-      if (!enforceSecurityGate()) return;
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = ev => {
-        const img = new Image();
-        img.onload = () => {
-          loadedImg = img;
-          canvas.width = img.width;
-          canvas.height = img.height;
-          canvas.classList.remove('hidden');
-          document.getElementById('empty-canvas-msg').classList.add('hidden');
-          renderImage();
-        };
-        img.src = ev.target.result;
-      };
-      reader.readAsDataURL(file);
-    });
-
-    [slBright, slContrast, slSat].forEach(sl => sl.addEventListener('input', renderImage));
-
-    document.querySelectorAll('.tool-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (!enforceSecurityGate() || !loadedImg) return;
-        const preset = btn.dataset.preset;
-        if (preset === 'hd') { slBright.value = 106; slContrast.value = 128; slSat.value = 112; }
-        if (preset === 'retouch') { slBright.value = 112; slContrast.value = 104; slSat.value = 115; }
-        if (preset === 'night') { slBright.value = 132; slContrast.value = 118; slSat.value = 108; }
-        if (preset === 'vivid') { slBright.value = 105; slContrast.value = 120; slSat.value = 145; }
-        renderImage();
-      });
-    });
-
-    document.getElementById('btn-auto-retouch').addEventListener('click', () => {
-      if (!enforceSecurityGate() || !loadedImg) return;
-      slBright.value = 112; slContrast.value = 108; slSat.value = 116;
-      renderImage();
-    });
-
-    document.getElementById('export-btn').addEventListener('click', () => {
-      if (!enforceSecurityGate() || !loadedImg) return;
-      const link = document.createElement('a');
-      link.download = `dibaspixai-${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
     });
 
     window.addEventListener('load', () => {
