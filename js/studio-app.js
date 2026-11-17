@@ -1,5 +1,5 @@
 /**
- * DibasPixAI Studio Controller — Step 3: All Tools Popup Menu + Crop/Rotate/Flip + Before/After Slider
+ * DibasPixAI Studio Controller — Multi-Apply Layers + Tool Strength Slider + Crop/Rotate/Flip + Before/After
  */
 (() => {
   const photoUpload = document.getElementById('photo-upload');
@@ -16,6 +16,7 @@
   const MAX_PREVIEW_DIM = 1400;
 
   let originalImage = null;
+  let committedBaseImage = null; // Holds saved/applied multi-tool image
   let beforeAfterEnabled = false;
   let splitRatio = 0.5;
   let rafPending = false;
@@ -27,7 +28,8 @@
   let cropMode = 'free'; // 'free' | '1:1' | '4:5' | '16:9'
 
   // Step 3 All Tools state
-  let activeAllTool = null; // null | 'ai-removal' | 'cutout' | 'super-res' | 'collage' | 'noise-reduction'
+  let activeAllTool = null;
+  let toolStrength = 80; // 0 to 100%
 
   const ALL_TOOLS_LIST = [
     {
@@ -79,7 +81,7 @@
 
   const canvasParent = canvas.parentElement;
 
-  // Step 3 Trigger Bar: "All Tools" button & active tool pill
+  // Top All Tools Bar
   const allToolsBar = document.createElement('div');
   allToolsBar.id = 'all-tools-bar';
   allToolsBar.className = 'w-full mb-3 flex flex-wrap items-center justify-between gap-2 text-xs';
@@ -95,7 +97,7 @@
   `;
   canvasParent.insertBefore(allToolsBar, canvasParent.firstChild);
 
-  // Step 3 Modal Popup
+  // All Tools Modal
   const allToolsModal = document.createElement('div');
   allToolsModal.id = 'all-tools-modal';
   allToolsModal.className = 'hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4';
@@ -104,7 +106,7 @@
       <div class="px-4 py-3.5 border-b border-white/10 flex items-center justify-between">
         <div>
           <h3 class="text-sm font-extrabold text-white tracking-wide">All Studio Tools</h3>
-          <p class="text-[11px] text-stone-400">Select a tool to apply on your canvas</p>
+          <p class="text-[11px] text-stone-400">Pick a tool, adjust below, and Apply & Save to stack more</p>
         </div>
         <button id="close-all-tools-btn" type="button" class="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-stone-300 text-sm font-bold cursor-pointer">✕</button>
       </div>
@@ -126,14 +128,35 @@
         ).join('')}
       </div>
       <div class="px-4 py-3 border-t border-white/10 flex items-center justify-between text-xs">
-        <button id="clear-alltool-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-stone-300 cursor-pointer">Clear Tool Effect</button>
+        <button id="clear-alltool-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-stone-300 cursor-pointer">Clear Tool</button>
         <button id="done-alltool-btn" type="button" class="px-4 py-1.5 rounded-lg bg-amber-500 text-black font-bold cursor-pointer">Done</button>
       </div>
     </div>
   `;
   document.body.appendChild(allToolsModal);
 
-  // Step 2 Toolbar: Rotate, Flip, Crop
+  // Dedicated Bottom Tool Adjustment Bar (appears right below canvas when an All Tool is selected)
+  const toolAdjustBar = document.createElement('div');
+  toolAdjustBar.id = 'tool-adjust-bar';
+  toolAdjustBar.className = 'hidden w-full mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-400/30 space-y-2 text-xs';
+  toolAdjustBar.innerHTML = `
+    <div class="flex items-center justify-between gap-2">
+      <span id="tool-adjust-title" class="font-bold text-amber-300 text-[11px] uppercase tracking-wider">Tool Adjustment</span>
+      <span id="tool-strength-val" class="font-bold text-amber-200">80%</span>
+    </div>
+    <input id="sl-tool-strength" type="range" min="0" max="100" value="80" class="w-full accent-amber-400 cursor-pointer" />
+    <div class="flex items-center justify-between gap-2 pt-1">
+      <button id="btn-cancel-tool" type="button" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-stone-300 cursor-pointer">
+        Cancel
+      </button>
+      <button id="btn-apply-tool-layer" type="button" class="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold cursor-pointer transition">
+        ✓ Apply & Save Layer
+      </button>
+    </div>
+  `;
+  canvasParent.appendChild(toolAdjustBar);
+
+  // Step 2 Transform Bar
   const transformBar = document.createElement('div');
   transformBar.id = 'transform-controls';
   transformBar.className = 'hidden w-full mt-3 pt-3 border-t border-white/10 space-y-2.5 text-xs';
@@ -159,7 +182,7 @@
   `;
   canvasParent.appendChild(transformBar);
 
-  // Step 1 Before / After Toolbar
+  // Step 1 Before/After Bar
   const baBar = document.createElement('div');
   baBar.id = 'ba-controls';
   baBar.className = 'hidden w-full mt-3 pt-3 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs';
@@ -185,19 +208,37 @@
   const baSliderWrap = document.getElementById('ba-slider-wrap');
   const baSplitRange = document.getElementById('ba-split-range');
   const activeToolBadge = document.getElementById('active-tool-badge');
+  const slToolStrength = document.getElementById('sl-tool-strength');
+  const toolStrengthVal = document.getElementById('tool-strength-val');
+  const toolAdjustTitle = document.getElementById('tool-adjust-title');
 
-  function updateActiveToolBadge() {
-    if (!activeAllTool) {
+  function updateToolUI() {
+    const found = ALL_TOOLS_LIST.find((t) => t.id === activeAllTool);
+    if (!found) {
       activeToolBadge.classList.add('hidden');
       activeToolBadge.textContent = '';
+      toolAdjustBar.classList.add('hidden');
       return;
     }
-    const found = ALL_TOOLS_LIST.find((t) => t.id === activeAllTool);
-    activeToolBadge.textContent = `Active: ${found ? found.name : activeAllTool}`;
+    activeToolBadge.textContent = `Active: ${found.name}`;
     activeToolBadge.classList.remove('hidden');
+    toolAdjustTitle.textContent = `${found.name} · Adjust Strength`;
+    toolStrengthVal.textContent = `${toolStrength}%`;
+    slToolStrength.value = toolStrength;
+    toolAdjustBar.classList.remove('hidden');
   }
 
-  function getFilterString() {
+  function getScaledToolFilter() {
+    const found = ALL_TOOLS_LIST.find((t) => t.id === activeAllTool);
+    if (!found) return 'none';
+    const ratio = toolStrength / 100;
+    const b = Math.round(100 + (found.bright - 100) * ratio);
+    const c = Math.round(100 + (found.contrast - 100) * ratio);
+    const s = Math.round(100 + (found.sat - 100) * ratio);
+    return `brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
+  }
+
+  function getManualFilterString() {
     const b = slBright ? slBright.value : 100;
     const c = slContrast ? slContrast.value : 100;
     const s = slSat ? slSat.value : 100;
@@ -206,14 +247,15 @@
 
   function applyAllToolOverlay(targetCtx, w, h) {
     if (activeAllTool === 'collage') {
-      const border = Math.max(12, Math.round(Math.min(w, h) * 0.04));
+      const alpha = Math.max(0.15, toolStrength / 100);
+      const border = Math.max(10, Math.round(Math.min(w, h) * 0.04));
       targetCtx.save();
+      targetCtx.globalAlpha = alpha;
       targetCtx.strokeStyle = '#fbbf24';
       targetCtx.lineWidth = border;
       targetCtx.strokeRect(border / 2, border / 2, w - border, h - border);
 
-      // Subtle split-frame guide lines
-      targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
       targetCtx.lineWidth = Math.max(1, Math.round(border * 0.15));
       targetCtx.beginPath();
       targetCtx.moveTo(w / 2, border);
@@ -273,6 +315,24 @@
     return outCanvas;
   }
 
+  function buildCurrentEditedCanvas(maxDim) {
+    const workingSource = committedBaseImage || originalImage;
+    const baseCanvas = buildTransformedCanvas(workingSource, maxDim);
+
+    const out = document.createElement('canvas');
+    out.width = baseCanvas.width;
+    out.height = baseCanvas.height;
+    const oCtx = out.getContext('2d');
+
+    oCtx.save();
+    oCtx.filter = `${getScaledToolFilter()} ${getManualFilterString()}`.trim();
+    oCtx.drawImage(baseCanvas, 0, 0, out.width, out.height);
+    oCtx.restore();
+
+    applyAllToolOverlay(oCtx, out.width, out.height);
+    return out;
+  }
+
   function renderStudioCanvas(maxDim = MAX_PREVIEW_DIM) {
     if (!originalImage) return;
 
@@ -280,20 +340,19 @@
     if (document.getElementById('val-contrast')) document.getElementById('val-contrast').textContent = `${slContrast.value}%`;
     if (document.getElementById('val-sat')) document.getElementById('val-sat').textContent = `${slSat.value}%`;
 
-    const baseCanvas = buildTransformedCanvas(originalImage, maxDim);
-    canvas.width = baseCanvas.width;
-    canvas.height = baseCanvas.height;
+    const workingSource = committedBaseImage || originalImage;
+    const beforeCanvas = buildTransformedCanvas(workingSource, maxDim);
+    const afterCanvas = buildCurrentEditedCanvas(maxDim);
+
+    canvas.width = afterCanvas.width;
+    canvas.height = afterCanvas.height;
 
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
     if (!beforeAfterEnabled) {
-      ctx.save();
-      ctx.filter = getFilterString();
-      ctx.drawImage(baseCanvas, 0, 0, w, h);
-      ctx.restore();
-      applyAllToolOverlay(ctx, w, h);
+      ctx.drawImage(afterCanvas, 0, 0, w, h);
       return;
     }
 
@@ -304,8 +363,7 @@
     ctx.beginPath();
     ctx.rect(0, 0, splitX, h);
     ctx.clip();
-    ctx.filter = 'none';
-    ctx.drawImage(baseCanvas, 0, 0, w, h);
+    ctx.drawImage(beforeCanvas, 0, 0, w, h);
     ctx.restore();
 
     // After
@@ -313,9 +371,7 @@
     ctx.beginPath();
     ctx.rect(splitX, 0, w - splitX, h);
     ctx.clip();
-    ctx.filter = getFilterString();
-    ctx.drawImage(baseCanvas, 0, 0, w, h);
-    applyAllToolOverlay(ctx, w, h);
+    ctx.drawImage(afterCanvas, 0, 0, w, h);
     ctx.restore();
 
     // Divider line & labels
@@ -360,13 +416,18 @@
       const img = new Image();
       img.onload = () => {
         originalImage = img;
+        committedBaseImage = null;
         rotationDeg = 0;
         flipH = false;
         flipV = false;
         cropMode = 'free';
         activeAllTool = null;
+        toolStrength = 80;
+        slBright.value = 100;
+        slContrast.value = 100;
+        slSat.value = 100;
         updateCropButtons();
-        updateActiveToolBadge();
+        updateToolUI();
         canvas.classList.remove('hidden');
         if (emptyMsg) emptyMsg.classList.add('hidden');
         transformBar.classList.remove('hidden');
@@ -378,7 +439,7 @@
     reader.readAsDataURL(file);
   });
 
-  // Step 3 All Tools modal controls
+  // All Tools Modal & Multi-Apply Controls
   document.getElementById('open-all-tools-btn').addEventListener('click', () => {
     allToolsModal.classList.remove('hidden');
   });
@@ -397,25 +458,58 @@
 
   document.querySelectorAll('.alltool-card').forEach((card) => {
     card.addEventListener('click', () => {
-      const toolId = card.dataset.alltool;
-      const toolCfg = ALL_TOOLS_LIST.find((t) => t.id === toolId);
-      if (!toolCfg) return;
-      activeAllTool = toolCfg.id;
-      slBright.value = toolCfg.bright;
-      slContrast.value = toolCfg.contrast;
-      slSat.value = toolCfg.sat;
-      updateActiveToolBadge();
+      if (!originalImage) {
+        allToolsModal.classList.add('hidden');
+        return;
+      }
+      activeAllTool = card.dataset.alltool;
+      toolStrength = 80;
+      updateToolUI();
       allToolsModal.classList.add('hidden');
-      if (originalImage) scheduleRender();
+      scheduleRender();
     });
+  });
+
+  slToolStrength.addEventListener('input', (e) => {
+    toolStrength = Number(e.target.value);
+    toolStrengthVal.textContent = `${toolStrength}%`;
+    scheduleRender();
+  });
+
+  // Commit current tool/sliders into base image so another All Tool can be stacked on top
+  document.getElementById('btn-apply-tool-layer').addEventListener('click', () => {
+    if (!originalImage) return;
+    const flattened = buildCurrentEditedCanvas(Math.max(originalImage.width, originalImage.height));
+    const savedImg = new Image();
+    savedImg.onload = () => {
+      committedBaseImage = savedImg;
+      rotationDeg = 0;
+      flipH = false;
+      flipV = false;
+      cropMode = 'free';
+      activeAllTool = null;
+      toolStrength = 80;
+      slBright.value = 100;
+      slContrast.value = 100;
+      slSat.value = 100;
+      updateCropButtons();
+      updateToolUI();
+      scheduleRender();
+    };
+    savedImg.src = flattened.toDataURL('image/png');
+  });
+
+  document.getElementById('btn-cancel-tool').addEventListener('click', () => {
+    activeAllTool = null;
+    toolStrength = 80;
+    updateToolUI();
+    scheduleRender();
   });
 
   document.getElementById('clear-alltool-btn').addEventListener('click', () => {
     activeAllTool = null;
-    slBright.value = 100;
-    slContrast.value = 100;
-    slSat.value = 100;
-    updateActiveToolBadge();
+    toolStrength = 80;
+    updateToolUI();
     allToolsModal.classList.add('hidden');
     if (originalImage) scheduleRender();
   });
@@ -504,6 +598,7 @@
 
   resetEditBtn.addEventListener('click', () => {
     if (!originalImage) return;
+    committedBaseImage = null;
     slBright.value = 100;
     slContrast.value = 100;
     slSat.value = 100;
@@ -512,27 +607,22 @@
     flipV = false;
     cropMode = 'free';
     activeAllTool = null;
+    toolStrength = 80;
     splitRatio = 0.5;
     baSplitRange.value = 50;
     updateCropButtons();
-    updateActiveToolBadge();
+    updateToolUI();
     scheduleRender();
   });
 
   if (exportBtn) {
     exportBtn.addEventListener('click', () => {
       if (!originalImage) return;
-      const prevBA = beforeAfterEnabled;
-      beforeAfterEnabled = false;
-      renderStudioCanvas(Math.max(originalImage.width, originalImage.height));
-
+      const fullCanvas = buildCurrentEditedCanvas(Math.max(originalImage.width, originalImage.height));
       const link = document.createElement('a');
       link.download = `dibaspixai-${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.href = fullCanvas.toDataURL('image/png');
       link.click();
-
-      beforeAfterEnabled = prevBA;
-      renderStudioCanvas(MAX_PREVIEW_DIM);
     });
   }
 })();
