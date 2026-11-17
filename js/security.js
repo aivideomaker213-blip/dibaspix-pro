@@ -1,39 +1,18 @@
 /**
- * DibasPixAI Security Engine
- * Handles Salted SHA-256 Password Hashing, Session Tokens, XSS Sanitization & Rate Limiting
+ * DibasPixAI Security & Session Manager
+ * SHA-256 + Salt password hashing, clean session recovery, and credit management
  */
 const StudioSecurity = (() => {
-  const USERS_KEY = 'dibaspix_ai_secure_users_v1';
-  const SESSION_KEY = 'dibaspix_ai_active_session_v1';
-  const ATTEMPT_KEY = 'dibaspix_ai_login_attempts_v1';
-
-  // Sanitize user input against XSS injection
-  function sanitize(str) {
-    const div = document.createElement('div');
-    div.textContent = String(str || '').trim();
-    return div.innerHTML;
-  }
-
-  // Generate cryptographically secure random hex string (Salt / Token)
-  function generateRandomHex(bytes = 16) {
-    const arr = new Uint8Array(bytes);
-    crypto.getRandomValues(arr);
-    return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  // Hash password with salt using browser native SHA-256
-  async function hashPassword(password, salt) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(`${salt}:${password}:DIBASPIX_AI_PEPPER_2026`);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hashBuffer), b => b.toString(16).padStart(2, '0')).join('');
-  }
+  const USERS_KEY = 'dibaspix_users_v1';
+  const SESSION_KEY = 'dibaspix_session_v1';
+  const RATE_KEY = 'dibaspix_rate_v1';
 
   function getUsers() {
     try {
-      return JSON.parse(localStorage.getItem(USERS_KEY)) || {};
+      const raw = localStorage.getItem(USERS_KEY);
+      return raw ? JSON.parse(raw) : [];
     } catch {
-      return {};
+      return [];
     }
   }
 
@@ -41,58 +20,76 @@ const StudioSecurity = (() => {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
   }
 
-  // Rate limiter against brute-force password guessing
+  function randomSalt(len = 16) {
+    const arr = new Uint8Array(len);
+    crypto.getRandomValues(arr);
+    return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function hashPassword(password, salt) {
+    const enc = new TextEncoder();
+    const data = enc.encode(`${salt}:${password}`);
+    const hashBuf = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuf), (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
   function checkRateLimit() {
-    const raw = sessionStorage.getItem(ATTEMPT_KEY);
-    if (!raw) return { allowed: true };
-    const data = JSON.parse(raw);
-    if (data.lockUntil && Date.now() < data.lockUntil) {
-      const waitSec = Math.ceil((data.lockUntil - Date.now()) / 1000);
-      return { allowed: false, message: `Too many attempts. Try again in ${waitSec}s.` };
+    try {
+      const info = JSON.parse(localStorage.getItem(RATE_KEY) || '{"count":0,"until":0}');
+      const now = Date.now();
+      if (info.until && now < info.until) {
+        const sec = Math.ceil((info.until - now) / 1000);
+        return { blocked: true, message: `Too many attempts. Try again in ${sec}s.` };
+      }
+      return { blocked: false };
+    } catch {
+      return { blocked: false };
     }
-    return { allowed: true };
   }
 
   function recordFailedAttempt() {
-    const raw = sessionStorage.getItem(ATTEMPT_KEY);
-    const data = raw ? JSON.parse(raw) : { count: 0, lockUntil: 0 };
-    data.count += 1;
-    if (data.count >= 5) {
-      data.lockUntil = Date.now() + 30000; // 30s cooldown
-      data.count = 0;
-    }
-    sessionStorage.setItem(ATTEMPT_KEY, JSON.stringify(data));
+    try {
+      const now = Date.now();
+      const info = JSON.parse(localStorage.getItem(RATE_KEY) || '{"count":0,"until":0}');
+      const count = (info.count || 0) + 1;
+      const until = count >= 5 ? now + 30000 : 0;
+      localStorage.setItem(RATE_KEY, JSON.stringify({ count, until }));
+    } catch {}
   }
 
-  function clearAttempts() {
-    sessionStorage.removeItem(ATTEMPT_KEY);
+  function clearRateLimit() {
+    localStorage.removeItem(RATE_KEY);
   }
 
-  // Register a new user securely
   async function registerUser({ username, email, password }) {
-    const cleanUser = sanitize(username).toLowerCase();
-    const cleanEmail = sanitize(email).toLowerCase();
+    const cleanUser = (username || '').trim();
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanPass = password || '';
 
     if (cleanUser.length < 3) {
       return { ok: false, message: 'Username must be at least 3 characters.' };
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      return { ok: false, message: 'Please enter a valid email address.' };
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { ok: false, message: 'Please enter a valid email.' };
     }
-    if (password.length < 6) {
+    if (cleanPass.length < 6) {
       return { ok: false, message: 'Password must be at least 6 characters.' };
     }
 
     const users = getUsers();
-    if (users[cleanUser]) {
-      return { ok: false, message: 'Username already exists. Please choose another.' };
+    const exists = users.some(
+      (u) => u.username.toLowerCase() === cleanUser.toLowerCase() || u.email === cleanEmail
+    );
+    if (exists) {
+      return { ok: false, message: 'Account already exists. Please sign in.' };
     }
 
-    const salt = generateRandomHex(16);
-    const passwordHash = await hashPassword(password, salt);
+    const salt = randomSalt();
+    const passwordHash = await hashPassword(cleanPass, salt);
 
-    users[cleanUser] = {
-      username: sanitize(username),
+    const newUser = {
+      id: `usr_${Date.now()}`,
+      username: cleanUser,
       email: cleanEmail,
       salt,
       passwordHash,
@@ -100,65 +97,88 @@ const StudioSecurity = (() => {
       createdAt: new Date().toISOString()
     };
 
+    users.push(newUser);
     saveUsers(users);
-    return createSession(users[cleanUser]);
-  }
 
-  // Authenticate existing user
-  async function loginUser({ username, password }) {
-    const limit = checkRateLimit();
-    if (!limit.allowed) return { ok: false, message: limit.message };
-
-    const cleanUser = sanitize(username).toLowerCase();
-    const users = getUsers();
-    const record = users[cleanUser];
-
-    if (!record) {
-      recordFailedAttempt();
-      return { ok: false, message: 'Invalid username or password.' };
-    }
-
-    const computedHash = await hashPassword(password, record.salt);
-    if (computedHash !== record.passwordHash) {
-      recordFailedAttempt();
-      return { ok: false, message: 'Invalid username or password.' };
-    }
-
-    clearAttempts();
-    return createSession(record);
-  }
-
-  // Issue authenticated session token
-  function createSession(userRecord) {
     const session = {
-      token: generateRandomHex(24),
-      username: userRecord.username,
-      email: userRecord.email,
-      credits: userRecord.credits,
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000
+      userId: newUser.id,
+      username: newUser.username,
+      email: newUser.email,
+      credits: newUser.credits
     };
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     return { ok: true, session };
   }
 
-  // Verify active session before unlocking Dashboard
+  async function loginUser({ username, password }) {
+    const rate = checkRateLimit();
+    if (rate.blocked) return { ok: false, message: rate.message };
+
+    const identifier = (username || '').trim().toLowerCase();
+    const cleanPass = password || '';
+
+    if (!identifier || !cleanPass) {
+      return { ok: false, message: 'Enter username/email and password.' };
+    }
+
+    const users = getUsers();
+    // Allow login with either Username OR Email
+    const user = users.find(
+      (u) => u.username.toLowerCase() === identifier || u.email.toLowerCase() === identifier
+    );
+
+    if (!user) {
+      recordFailedAttempt();
+      return { ok: false, message: 'Invalid username or password.' };
+    }
+
+    const attemptHash = await hashPassword(cleanPass, user.salt);
+    if (attemptHash !== user.passwordHash) {
+      recordFailedAttempt();
+      return { ok: false, message: 'Invalid username or password.' };
+    }
+
+    clearRateLimit();
+    const session = {
+      userId: user.id,
+      username: user.username,
+      email: user.email,
+      credits: typeof user.credits === 'number' ? user.credits : 25
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    return { ok: true, session };
+  }
+
   function getActiveSession() {
     try {
-      const raw = sessionStorage.getItem(SESSION_KEY);
+      const raw = localStorage.getItem(SESSION_KEY);
       if (!raw) return null;
       const session = JSON.parse(raw);
-      if (!session.token || Date.now() > session.expiresAt) {
-        logout();
-        return null;
-      }
+      if (!session || !session.username) return null;
       return session;
     } catch {
+      localStorage.removeItem(SESSION_KEY);
       return null;
     }
   }
 
   function logout() {
-    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
+  }
+
+  function updateCredits(newCredits) {
+    const session = getActiveSession();
+    if (!session) return null;
+    session.credits = Math.max(0, Number(newCredits));
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+
+    const users = getUsers();
+    const idx = users.findIndex((u) => u.id === session.userId);
+    if (idx !== -1) {
+      users[idx].credits = session.credits;
+      saveUsers(users);
+    }
+    return session;
   }
 
   return {
@@ -166,6 +186,6 @@ const StudioSecurity = (() => {
     loginUser,
     getActiveSession,
     logout,
-    sanitize
+    updateCredits
   };
 })();
