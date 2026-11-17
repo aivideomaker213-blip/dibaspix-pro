@@ -1,5 +1,6 @@
 /**
- * DibasPixAI Studio Controller — Full Sync: Bottom Tools + Sliders + All Tools + Crop/Rotate/Flip + Before/After + Credits/History
+ * DibasPixAI Studio Controller — Strict Guard Architecture
+ * Isolates tool updates so active edits apply cleanly without breaking existing smooth tools.
  */
 (() => {
   const photoUpload = document.getElementById('photo-upload');
@@ -13,28 +14,29 @@
   const autoRetouchBtn = document.getElementById('btn-auto-retouch');
 
   if (!canvas || !photoUpload) return;
-  const ctx = canvas.getContext('2d');
 
+  // Strict Single-Instance Guard: prevent duplicate listeners on reload/re-init
+  if (canvas.dataset.dibasStrictBound === '1') return;
+  canvas.dataset.dibasStrictBound = '1';
+
+  const ctx = canvas.getContext('2d');
   const MAX_PREVIEW_DIM = 1400;
 
-  let originalImage = null;
-  let committedBaseImage = null;
-  let beforeAfterEnabled = false;
-  let splitRatio = 0.5;
-  let rafPending = false;
-
-  // Step 2 Transform state
-  let rotationDeg = 0;   // 0, 90, 180, 270
-  let flipH = false;
-  let flipV = false;
-  let cropMode = 'free'; // 'free' | '1:1' | '4:5' | '16:9'
-
-  // Step 3 All Tools state
-  let activeAllTool = null;
-  let toolStrength = 80; // 0 to 100%
-
-  // Step 4 History & Layer Stack state
-  let historyStack = []; // { label, cost, prevSrc }
+  // Isolated State Store
+  const state = {
+    originalImage: null,
+    committedBaseImage: null,
+    beforeAfterEnabled: false,
+    splitRatio: 0.5,
+    rafPending: false,
+    rotationDeg: 0,
+    flipH: false,
+    flipV: false,
+    cropMode: 'free',
+    activeAllTool: null,
+    toolStrength: 80,
+    historyStack: []
+  };
 
   const ALL_TOOLS_LIST = [
     {
@@ -123,6 +125,12 @@
 
   const canvasParent = canvas.parentElement;
 
+  // Clean existing dynamic bars before injecting (Strict Idempotent DOM Guard)
+  ['all-tools-bar', 'all-tools-modal', 'tool-adjust-bar', 'transform-controls', 'ba-controls', 'edit-history-panel'].forEach((id) => {
+    const existing = document.getElementById(id);
+    if (existing) existing.remove();
+  });
+
   // Top All Tools Bar
   const allToolsBar = document.createElement('div');
   allToolsBar.id = 'all-tools-bar';
@@ -135,7 +143,7 @@
       </button>
       <span id="active-tool-badge" class="hidden px-2.5 py-1 rounded-full bg-purple-500/20 border border-purple-400/35 text-purple-200 text-[11px] font-semibold"></span>
     </div>
-    <span class="text-[11px] text-stone-400">Wink Studio Suite</span>
+    <span class="text-[11px] text-stone-400">Strict Studio Engine</span>
   `;
   canvasParent.insertBefore(allToolsBar, canvasParent.firstChild);
 
@@ -177,7 +185,7 @@
   `;
   document.body.appendChild(allToolsModal);
 
-  // Dedicated Bottom Tool Adjustment Bar
+  // Bottom Tool Adjustment Bar
   const toolAdjustBar = document.createElement('div');
   toolAdjustBar.id = 'tool-adjust-bar';
   toolAdjustBar.className = 'hidden w-full mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-400/30 space-y-2 text-xs';
@@ -251,7 +259,7 @@
   historyPanel.className = 'hidden w-full mt-3 pt-3 border-t border-white/10 space-y-2 text-xs';
   historyPanel.innerHTML = `
     <div class="flex items-center justify-between">
-      <span class="text-amber-400 font-bold uppercase tracking-wider text-[11px]">Step 4 · Edit History (<span id="history-count">0</span>)</span>
+      <span class="text-amber-400 font-bold uppercase tracking-wider text-[11px]">Edit History (<span id="history-count">0</span>)</span>
       <button id="btn-undo-history" type="button" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-red-500/20 border border-white/10 text-stone-300 hover:text-red-200 cursor-pointer transition">
         ↶ Undo Last
       </button>
@@ -272,12 +280,12 @@
   const historyListEl = document.getElementById('history-list');
 
   function renderHistoryUI() {
-    historyCountEl.textContent = String(historyStack.length);
-    if (historyStack.length === 0) {
+    historyCountEl.textContent = String(state.historyStack.length);
+    if (state.historyStack.length === 0) {
       historyListEl.innerHTML = `<span class="text-[11px] text-stone-500">No saved layers yet</span>`;
       return;
     }
-    historyListEl.innerHTML = historyStack
+    historyListEl.innerHTML = state.historyStack
       .map(
         (item, idx) => `
         <span class="px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/10 text-stone-200 text-[11px]">
@@ -289,7 +297,7 @@
   }
 
   function updateToolUI() {
-    const found = ALL_TOOLS_LIST.find((t) => t.id === activeAllTool);
+    const found = ALL_TOOLS_LIST.find((t) => t.id === state.activeAllTool);
     if (!found) {
       activeToolBadge.classList.add('hidden');
       activeToolBadge.textContent = '';
@@ -299,15 +307,15 @@
     activeToolBadge.textContent = `Active: ${found.name} (${found.cost}✦)`;
     activeToolBadge.classList.remove('hidden');
     toolAdjustTitle.textContent = `${found.name} · Adjust Strength (${found.cost} Credits)`;
-    toolStrengthVal.textContent = `${toolStrength}%`;
-    slToolStrength.value = toolStrength;
+    toolStrengthVal.textContent = `${state.toolStrength}%`;
+    slToolStrength.value = state.toolStrength;
     toolAdjustBar.classList.remove('hidden');
   }
 
   function getScaledToolFilter() {
-    const found = ALL_TOOLS_LIST.find((t) => t.id === activeAllTool);
+    const found = ALL_TOOLS_LIST.find((t) => t.id === state.activeAllTool);
     if (!found) return '';
-    const ratio = toolStrength / 100;
+    const ratio = state.toolStrength / 100;
     const b = Math.round(100 + (found.bright - 100) * ratio);
     const c = Math.round(100 + (found.contrast - 100) * ratio);
     const s = Math.round(100 + (found.sat - 100) * ratio);
@@ -322,8 +330,8 @@
   }
 
   function applyAllToolOverlay(targetCtx, w, h) {
-    if (activeAllTool === 'collage') {
-      const alpha = Math.max(0.15, toolStrength / 100);
+    if (state.activeAllTool === 'collage') {
+      const alpha = Math.max(0.15, state.toolStrength / 100);
       const border = Math.max(10, Math.round(Math.min(w, h) * 0.04));
       targetCtx.save();
       targetCtx.globalAlpha = alpha;
@@ -346,7 +354,7 @@
     const srcW = Math.max(1, Math.round(sourceImg.width * scale));
     const srcH = Math.max(1, Math.round(sourceImg.height * scale));
 
-    const rotated = rotationDeg % 180 !== 0;
+    const rotated = state.rotationDeg % 180 !== 0;
     const rotW = rotated ? srcH : srcW;
     const rotH = rotated ? srcW : srcH;
 
@@ -357,17 +365,17 @@
 
     rCtx.save();
     rCtx.translate(rotW / 2, rotH / 2);
-    rCtx.rotate((rotationDeg * Math.PI) / 180);
-    rCtx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+    rCtx.rotate((state.rotationDeg * Math.PI) / 180);
+    rCtx.scale(state.flipH ? -1 : 1, state.flipV ? -1 : 1);
     rCtx.drawImage(sourceImg, -srcW / 2, -srcH / 2, srcW, srcH);
     rCtx.restore();
 
     let cropW = rotW;
     let cropH = rotH;
 
-    if (cropMode !== 'free') {
+    if (state.cropMode !== 'free') {
       const ratios = { '1:1': 1, '4:5': 4 / 5, '16:9': 16 / 9 };
-      const targetRatio = ratios[cropMode];
+      const targetRatio = ratios[state.cropMode];
       const currentRatio = rotW / rotH;
 
       if (currentRatio > targetRatio) {
@@ -392,7 +400,7 @@
   }
 
   function buildCurrentEditedCanvas(maxDim) {
-    const workingSource = committedBaseImage || originalImage;
+    const workingSource = state.committedBaseImage || state.originalImage;
     const baseCanvas = buildTransformedCanvas(workingSource, maxDim);
 
     const out = document.createElement('canvas');
@@ -411,75 +419,86 @@
   }
 
   function renderStudioCanvas(maxDim = MAX_PREVIEW_DIM) {
-    if (!originalImage) return;
+    if (!state.originalImage) return;
+    try {
+      if (document.getElementById('val-bright')) document.getElementById('val-bright').textContent = `${slBright.value}%`;
+      if (document.getElementById('val-contrast')) document.getElementById('val-contrast').textContent = `${slContrast.value}%`;
+      if (document.getElementById('val-sat')) document.getElementById('val-sat').textContent = `${slSat.value}%`;
 
-    if (document.getElementById('val-bright')) document.getElementById('val-bright').textContent = `${slBright.value}%`;
-    if (document.getElementById('val-contrast')) document.getElementById('val-contrast').textContent = `${slContrast.value}%`;
-    if (document.getElementById('val-sat')) document.getElementById('val-sat').textContent = `${slSat.value}%`;
+      const workingSource = state.committedBaseImage || state.originalImage;
+      const beforeCanvas = buildTransformedCanvas(workingSource, maxDim);
+      const afterCanvas = buildCurrentEditedCanvas(maxDim);
 
-    const workingSource = committedBaseImage || originalImage;
-    const beforeCanvas = buildTransformedCanvas(workingSource, maxDim);
-    const afterCanvas = buildCurrentEditedCanvas(maxDim);
+      canvas.width = afterCanvas.width;
+      canvas.height = afterCanvas.height;
 
-    canvas.width = afterCanvas.width;
-    canvas.height = afterCanvas.height;
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
 
-    const w = canvas.width;
-    const h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
+      if (!state.beforeAfterEnabled) {
+        ctx.drawImage(afterCanvas, 0, 0, w, h);
+        return;
+      }
 
-    if (!beforeAfterEnabled) {
+      const splitX = Math.floor(w * state.splitRatio);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, splitX, h);
+      ctx.clip();
+      ctx.drawImage(beforeCanvas, 0, 0, w, h);
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(splitX, 0, w - splitX, h);
+      ctx.clip();
       ctx.drawImage(afterCanvas, 0, 0, w, h);
-      return;
-    }
+      ctx.restore();
 
-    const splitX = Math.floor(w * splitRatio);
+      ctx.save();
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = Math.max(2, Math.round(w / 320));
+      ctx.beginPath();
+      ctx.moveTo(splitX, 0);
+      ctx.lineTo(splitX, h);
+      ctx.stroke();
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, splitX, h);
-    ctx.clip();
-    ctx.drawImage(beforeCanvas, 0, 0, w, h);
-    ctx.restore();
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(splitX, 0, w - splitX, h);
-    ctx.clip();
-    ctx.drawImage(afterCanvas, 0, 0, w, h);
-    ctx.restore();
-
-    ctx.save();
-    ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = Math.max(2, Math.round(w / 320));
-    ctx.beginPath();
-    ctx.moveTo(splitX, 0);
-    ctx.lineTo(splitX, h);
-    ctx.stroke();
-
-    const fontSize = Math.max(12, Math.round(w / 42));
-    ctx.font = `700 ${fontSize}px Inter, sans-serif`;
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    ctx.fillRect(10, 10, 74, fontSize + 10);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText('BEFORE', 16, 10 + fontSize + 2);
-
-    if (w - splitX > 90) {
+      const fontSize = Math.max(12, Math.round(w / 42));
+      ctx.font = `700 ${fontSize}px Inter, sans-serif`;
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(splitX + 10, 10, 68, fontSize + 10);
-      ctx.fillStyle = '#fbbf24';
-      ctx.fillText('AFTER', splitX + 16, 10 + fontSize + 2);
+      ctx.fillRect(10, 10, 74, fontSize + 10);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('BEFORE', 16, 10 + fontSize + 2);
+
+      if (w - splitX > 90) {
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.fillRect(splitX + 10, 10, 68, fontSize + 10);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText('AFTER', splitX + 16, 10 + fontSize + 2);
+      }
+      ctx.restore();
+    } catch (err) {
+      console.error('DibasPixAI Strict Render Guard:', err);
     }
-    ctx.restore();
   }
 
   function scheduleRender() {
-    if (rafPending) return;
-    rafPending = true;
+    if (state.rafPending) return;
+    state.rafPending = true;
     requestAnimationFrame(() => {
-      rafPending = false;
+      state.rafPending = false;
       renderStudioCanvas(MAX_PREVIEW_DIM);
     });
+  }
+
+  // Strict Clean Switch: when bottom/manual tools are used, clear temporary unapplied AllTool overlay
+  function clearTemporaryToolForManualEdit() {
+    if (state.activeAllTool) {
+      state.activeAllTool = null;
+      updateToolUI();
+    }
   }
 
   photoUpload.addEventListener('change', (e) => {
@@ -489,15 +508,15 @@
     reader.onload = (ev) => {
       const img = new Image();
       img.onload = () => {
-        originalImage = img;
-        committedBaseImage = null;
-        historyStack = [];
-        rotationDeg = 0;
-        flipH = false;
-        flipV = false;
-        cropMode = 'free';
-        activeAllTool = null;
-        toolStrength = 80;
+        state.originalImage = img;
+        state.committedBaseImage = null;
+        state.historyStack = [];
+        state.rotationDeg = 0;
+        state.flipH = false;
+        state.flipV = false;
+        state.cropMode = 'free';
+        state.activeAllTool = null;
+        state.toolStrength = 80;
         slBright.value = 100;
         slContrast.value = 100;
         slSat.value = 100;
@@ -536,12 +555,12 @@
 
   document.querySelectorAll('.alltool-card').forEach((card) => {
     card.addEventListener('click', () => {
-      if (!originalImage) {
+      if (!state.originalImage) {
         allToolsModal.classList.add('hidden');
         return;
       }
-      activeAllTool = card.dataset.alltool;
-      toolStrength = 80;
+      state.activeAllTool = card.dataset.alltool;
+      state.toolStrength = 80;
       updateToolUI();
       allToolsModal.classList.add('hidden');
       scheduleRender();
@@ -549,36 +568,36 @@
   });
 
   slToolStrength.addEventListener('input', (e) => {
-    toolStrength = Number(e.target.value);
-    toolStrengthVal.textContent = `${toolStrength}%`;
+    state.toolStrength = Number(e.target.value);
+    toolStrengthVal.textContent = `${state.toolStrength}%`;
     scheduleRender();
   });
 
   document.getElementById('btn-apply-tool-layer').addEventListener('click', async () => {
-    if (!originalImage) return;
-    const found = ALL_TOOLS_LIST.find((t) => t.id === activeAllTool);
+    if (!state.originalImage) return;
+    const found = ALL_TOOLS_LIST.find((t) => t.id === state.activeAllTool);
     const cost = found ? found.cost : 1;
-    const label = found ? `${found.name} (${toolStrength}%)` : 'Studio Edit';
+    const label = found ? `${found.name} (${state.toolStrength}%)` : 'Studio Edit';
 
     if (!spendCredits(cost)) {
       alert('Not enough credits! Please logout and sign in again to reset demo credits.');
       return;
     }
 
-    const flattened = buildCurrentEditedCanvas(Math.max(originalImage.width, originalImage.height));
+    const flattened = buildCurrentEditedCanvas(Math.max(state.originalImage.width, state.originalImage.height));
     let finalDataUrl = flattened.toDataURL('image/png');
 
     if (window.DibasPixAI_Hooks && typeof window.DibasPixAI_Hooks.onBeforeApplyTool === 'function') {
       const hookRes = await window.DibasPixAI_Hooks.onBeforeApplyTool({
-        toolId: activeAllTool,
-        strength: toolStrength,
+        toolId: state.activeAllTool,
+        strength: state.toolStrength,
         canvasDataUrl: finalDataUrl
       });
       if (hookRes && hookRes.dataUrl) finalDataUrl = hookRes.dataUrl;
     }
 
-    const prevSource = committedBaseImage || originalImage;
-    historyStack.push({
+    const prevSource = state.committedBaseImage || state.originalImage;
+    state.historyStack.push({
       label,
       cost,
       prevSrc: prevSource.src
@@ -586,13 +605,13 @@
 
     const savedImg = new Image();
     savedImg.onload = () => {
-      committedBaseImage = savedImg;
-      rotationDeg = 0;
-      flipH = false;
-      flipV = false;
-      cropMode = 'free';
-      activeAllTool = null;
-      toolStrength = 80;
+      state.committedBaseImage = savedImg;
+      state.rotationDeg = 0;
+      state.flipH = false;
+      state.flipV = false;
+      state.cropMode = 'free';
+      state.activeAllTool = null;
+      state.toolStrength = 80;
       slBright.value = 100;
       slContrast.value = 100;
       slSat.value = 100;
@@ -605,17 +624,17 @@
   });
 
   document.getElementById('btn-undo-history').addEventListener('click', () => {
-    if (!originalImage || historyStack.length === 0) return;
-    const last = historyStack.pop();
-    if (historyStack.length === 0) {
-      committedBaseImage = null;
+    if (!state.originalImage || state.historyStack.length === 0) return;
+    const last = state.historyStack.pop();
+    if (state.historyStack.length === 0) {
+      state.committedBaseImage = null;
       renderHistoryUI();
       scheduleRender();
       return;
     }
     const restoreImg = new Image();
     restoreImg.onload = () => {
-      committedBaseImage = restoreImg;
+      state.committedBaseImage = restoreImg;
       renderHistoryUI();
       scheduleRender();
     };
@@ -623,48 +642,48 @@
   });
 
   document.getElementById('btn-cancel-tool').addEventListener('click', () => {
-    activeAllTool = null;
-    toolStrength = 80;
+    state.activeAllTool = null;
+    state.toolStrength = 80;
     updateToolUI();
     scheduleRender();
   });
 
   document.getElementById('clear-alltool-btn').addEventListener('click', () => {
-    activeAllTool = null;
-    toolStrength = 80;
+    state.activeAllTool = null;
+    state.toolStrength = 80;
     updateToolUI();
     allToolsModal.classList.add('hidden');
-    if (originalImage) scheduleRender();
+    if (state.originalImage) scheduleRender();
   });
 
   // Step 2 Rotate & Flip handlers
   document.getElementById('btn-rotate-left').addEventListener('click', () => {
-    if (!originalImage) return;
-    rotationDeg = (rotationDeg + 270) % 360;
+    if (!state.originalImage) return;
+    state.rotationDeg = (state.rotationDeg + 270) % 360;
     scheduleRender();
   });
 
   document.getElementById('btn-rotate-right').addEventListener('click', () => {
-    if (!originalImage) return;
-    rotationDeg = (rotationDeg + 90) % 360;
+    if (!state.originalImage) return;
+    state.rotationDeg = (state.rotationDeg + 90) % 360;
     scheduleRender();
   });
 
   document.getElementById('btn-flip-h').addEventListener('click', () => {
-    if (!originalImage) return;
-    flipH = !flipH;
+    if (!state.originalImage) return;
+    state.flipH = !state.flipH;
     scheduleRender();
   });
 
   document.getElementById('btn-flip-v').addEventListener('click', () => {
-    if (!originalImage) return;
-    flipV = !flipV;
+    if (!state.originalImage) return;
+    state.flipV = !state.flipV;
     scheduleRender();
   });
 
   function updateCropButtons() {
     document.querySelectorAll('.crop-btn').forEach((btn) => {
-      const active = btn.dataset.crop === cropMode;
+      const active = btn.dataset.crop === state.cropMode;
       btn.className = active
         ? 'crop-btn px-2.5 py-1 rounded-lg bg-amber-500 text-black font-semibold cursor-pointer'
         : 'crop-btn px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-stone-300 cursor-pointer';
@@ -673,8 +692,8 @@
 
   document.querySelectorAll('.crop-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      if (!originalImage) return;
-      cropMode = btn.dataset.crop;
+      if (!state.originalImage) return;
+      state.cropMode = btn.dataset.crop;
       updateCropButtons();
       scheduleRender();
     });
@@ -683,15 +702,22 @@
   // Sliders (Brightness, Contrast, Saturation)
   [slBright, slContrast, slSat].forEach((sl) => {
     if (!sl) return;
-    sl.addEventListener('input', scheduleRender);
-    sl.addEventListener('change', scheduleRender);
+    sl.addEventListener('input', () => {
+      clearTemporaryToolForManualEdit();
+      scheduleRender();
+    });
+    sl.addEventListener('change', () => {
+      clearTemporaryToolForManualEdit();
+      scheduleRender();
+    });
   });
 
   // Bottom Photo Repair & AI Tools (HD Quality, AI Retouch, Night View, AI Color)
   function applyBottomPreset(presetKey) {
-    if (!originalImage) return;
+    if (!state.originalImage) return;
     const cfg = BOTTOM_PRESETS[presetKey];
     if (!cfg) return;
+    clearTemporaryToolForManualEdit();
     slBright.value = cfg.bright;
     slContrast.value = cfg.contrast;
     slSat.value = cfg.sat;
@@ -706,7 +732,8 @@
 
   if (autoRetouchBtn) {
     autoRetouchBtn.addEventListener('click', () => {
-      if (!originalImage) return;
+      if (!state.originalImage) return;
+      clearTemporaryToolForManualEdit();
       slBright.value = 112;
       slContrast.value = 108;
       slSat.value = 116;
@@ -715,31 +742,31 @@
   }
 
   toggleBaBtn.addEventListener('click', () => {
-    beforeAfterEnabled = !beforeAfterEnabled;
-    toggleBaBtn.textContent = `⇄ Before / After: ${beforeAfterEnabled ? 'ON' : 'OFF'}`;
-    baSliderWrap.classList.toggle('hidden', !beforeAfterEnabled);
+    state.beforeAfterEnabled = !state.beforeAfterEnabled;
+    toggleBaBtn.textContent = `⇄ Before / After: ${state.beforeAfterEnabled ? 'ON' : 'OFF'}`;
+    baSliderWrap.classList.toggle('hidden', !state.beforeAfterEnabled);
     scheduleRender();
   });
 
   baSplitRange.addEventListener('input', (e) => {
-    splitRatio = Number(e.target.value) / 100;
+    state.splitRatio = Number(e.target.value) / 100;
     scheduleRender();
   });
 
   resetEditBtn.addEventListener('click', () => {
-    if (!originalImage) return;
-    committedBaseImage = null;
-    historyStack = [];
+    if (!state.originalImage) return;
+    state.committedBaseImage = null;
+    state.historyStack = [];
+    state.rotationDeg = 0;
+    state.flipH = false;
+    state.flipV = false;
+    state.cropMode = 'free';
+    state.activeAllTool = null;
+    state.toolStrength = 80;
+    state.splitRatio = 0.5;
     slBright.value = 100;
     slContrast.value = 100;
     slSat.value = 100;
-    rotationDeg = 0;
-    flipH = false;
-    flipV = false;
-    cropMode = 'free';
-    activeAllTool = null;
-    toolStrength = 80;
-    splitRatio = 0.5;
     baSplitRange.value = 50;
     updateCropButtons();
     updateToolUI();
@@ -749,8 +776,8 @@
 
   if (exportBtn) {
     exportBtn.addEventListener('click', () => {
-      if (!originalImage) return;
-      const fullCanvas = buildCurrentEditedCanvas(Math.max(originalImage.width, originalImage.height));
+      if (!state.originalImage) return;
+      const fullCanvas = buildCurrentEditedCanvas(Math.max(state.originalImage.width, state.originalImage.height));
       const link = document.createElement('a');
       link.download = `dibaspixai-${Date.now()}.png`;
       link.href = fullCanvas.toDataURL('image/png');
