@@ -1,5 +1,5 @@
 /**
- * DibasPixAI Studio Controller — Multi-Apply Layers + Tool Strength Slider + Crop/Rotate/Flip + Before/After
+ * DibasPixAI Studio Controller — Full Sync: Bottom Tools + Sliders + All Tools + Crop/Rotate/Flip + Before/After + Credits/History
  */
 (() => {
   const photoUpload = document.getElementById('photo-upload');
@@ -9,14 +9,16 @@
   const slContrast = document.getElementById('sl-contrast');
   const slSat = document.getElementById('sl-sat');
   const exportBtn = document.getElementById('export-btn');
+  const userCreditsEl = document.getElementById('user-credits');
+  const autoRetouchBtn = document.getElementById('btn-auto-retouch');
 
   if (!canvas || !photoUpload) return;
-  const ctx = canvas.getContext('2d', { alpha: false });
+  const ctx = canvas.getContext('2d');
 
   const MAX_PREVIEW_DIM = 1400;
 
   let originalImage = null;
-  let committedBaseImage = null; // Holds saved/applied multi-tool image
+  let committedBaseImage = null;
   let beforeAfterEnabled = false;
   let splitRatio = 0.5;
   let rafPending = false;
@@ -31,11 +33,15 @@
   let activeAllTool = null;
   let toolStrength = 80; // 0 to 100%
 
+  // Step 4 History & Layer Stack state
+  let historyStack = []; // { label, cost, prevSrc }
+
   const ALL_TOOLS_LIST = [
     {
       id: 'ai-removal',
       name: 'AI Removal',
       badge: 'Clean',
+      cost: 2,
       desc: 'Soft-blend & distraction tone smoothing',
       bright: 104,
       contrast: 96,
@@ -45,6 +51,7 @@
       id: 'cutout',
       name: 'Cutout',
       badge: 'Pop',
+      cost: 2,
       desc: 'Subject separation & crisp edge focus',
       bright: 108,
       contrast: 134,
@@ -54,6 +61,7 @@
       id: 'super-res',
       name: 'Super Resolution',
       badge: '4K',
+      cost: 3,
       desc: 'High-clarity detail & micro-contrast boost',
       bright: 107,
       contrast: 138,
@@ -63,6 +71,7 @@
       id: 'collage',
       name: 'Collage',
       badge: 'Frame',
+      cost: 1,
       desc: 'Studio frame border & gallery layout overlay',
       bright: 105,
       contrast: 112,
@@ -72,12 +81,45 @@
       id: 'noise-reduction',
       name: 'Noise Reduction',
       badge: 'Smooth',
+      cost: 2,
       desc: 'Grain reduction & smooth skin/shadow pass',
       bright: 110,
       contrast: 94,
       sat: 105
     }
   ];
+
+  const BOTTOM_PRESETS = {
+    hd: { bright: 106, contrast: 128, sat: 112 },
+    retouch: { bright: 112, contrast: 104, sat: 115 },
+    night: { bright: 132, contrast: 118, sat: 108 },
+    vivid: { bright: 105, contrast: 120, sat: 145 }
+  };
+
+  window.DibasPixAI_Hooks = {
+    onBeforeApplyTool: async ({ toolId, strength, canvasDataUrl }) => {
+      return { ok: true, dataUrl: canvasDataUrl, toolId, strength };
+    }
+  };
+
+  function syncCreditsDisplay() {
+    if (!userCreditsEl || typeof StudioSecurity === 'undefined') return;
+    const session = StudioSecurity.getActiveSession();
+    if (session && typeof session.credits === 'number') {
+      userCreditsEl.textContent = session.credits;
+    }
+  }
+
+  function spendCredits(amount) {
+    if (typeof StudioSecurity === 'undefined') return true;
+    const session = StudioSecurity.getActiveSession();
+    if (!session) return false;
+    const current = typeof session.credits === 'number' ? session.credits : 25;
+    if (current < amount) return false;
+    StudioSecurity.updateCredits(current - amount);
+    syncCreditsDisplay();
+    return true;
+  }
 
   const canvasParent = canvas.parentElement;
 
@@ -106,7 +148,7 @@
       <div class="px-4 py-3.5 border-b border-white/10 flex items-center justify-between">
         <div>
           <h3 class="text-sm font-extrabold text-white tracking-wide">All Studio Tools</h3>
-          <p class="text-[11px] text-stone-400">Pick a tool, adjust below, and Apply & Save to stack more</p>
+          <p class="text-[11px] text-stone-400">Pick a tool, adjust strength, and Apply & Save Layer</p>
         </div>
         <button id="close-all-tools-btn" type="button" class="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-stone-300 text-sm font-bold cursor-pointer">✕</button>
       </div>
@@ -120,7 +162,7 @@
           >
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs font-bold text-white">${tool.name}</span>
-              <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold">${tool.badge}</span>
+              <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold">${tool.badge} · ${tool.cost}✦</span>
             </div>
             <p class="text-[11px] text-stone-400 leading-snug">${tool.desc}</p>
           </button>
@@ -135,7 +177,7 @@
   `;
   document.body.appendChild(allToolsModal);
 
-  // Dedicated Bottom Tool Adjustment Bar (appears right below canvas when an All Tool is selected)
+  // Dedicated Bottom Tool Adjustment Bar
   const toolAdjustBar = document.createElement('div');
   toolAdjustBar.id = 'tool-adjust-bar';
   toolAdjustBar.className = 'hidden w-full mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-400/30 space-y-2 text-xs';
@@ -203,6 +245,21 @@
   `;
   canvasParent.appendChild(baBar);
 
+  // Step 4 Edit History Panel
+  const historyPanel = document.createElement('div');
+  historyPanel.id = 'edit-history-panel';
+  historyPanel.className = 'hidden w-full mt-3 pt-3 border-t border-white/10 space-y-2 text-xs';
+  historyPanel.innerHTML = `
+    <div class="flex items-center justify-between">
+      <span class="text-amber-400 font-bold uppercase tracking-wider text-[11px]">Step 4 · Edit History (<span id="history-count">0</span>)</span>
+      <button id="btn-undo-history" type="button" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-red-500/20 border border-white/10 text-stone-300 hover:text-red-200 cursor-pointer transition">
+        ↶ Undo Last
+      </button>
+    </div>
+    <div id="history-list" class="flex flex-wrap gap-1.5"></div>
+  `;
+  canvasParent.appendChild(historyPanel);
+
   const toggleBaBtn = document.getElementById('toggle-ba-btn');
   const resetEditBtn = document.getElementById('reset-edit-btn');
   const baSliderWrap = document.getElementById('ba-slider-wrap');
@@ -211,6 +268,25 @@
   const slToolStrength = document.getElementById('sl-tool-strength');
   const toolStrengthVal = document.getElementById('tool-strength-val');
   const toolAdjustTitle = document.getElementById('tool-adjust-title');
+  const historyCountEl = document.getElementById('history-count');
+  const historyListEl = document.getElementById('history-list');
+
+  function renderHistoryUI() {
+    historyCountEl.textContent = String(historyStack.length);
+    if (historyStack.length === 0) {
+      historyListEl.innerHTML = `<span class="text-[11px] text-stone-500">No saved layers yet</span>`;
+      return;
+    }
+    historyListEl.innerHTML = historyStack
+      .map(
+        (item, idx) => `
+        <span class="px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/10 text-stone-200 text-[11px]">
+          ${idx + 1}. ${item.label} <span class="text-amber-300">(-${item.cost}✦)</span>
+        </span>
+      `
+      )
+      .join('');
+  }
 
   function updateToolUI() {
     const found = ALL_TOOLS_LIST.find((t) => t.id === activeAllTool);
@@ -220,9 +296,9 @@
       toolAdjustBar.classList.add('hidden');
       return;
     }
-    activeToolBadge.textContent = `Active: ${found.name}`;
+    activeToolBadge.textContent = `Active: ${found.name} (${found.cost}✦)`;
     activeToolBadge.classList.remove('hidden');
-    toolAdjustTitle.textContent = `${found.name} · Adjust Strength`;
+    toolAdjustTitle.textContent = `${found.name} · Adjust Strength (${found.cost} Credits)`;
     toolStrengthVal.textContent = `${toolStrength}%`;
     slToolStrength.value = toolStrength;
     toolAdjustBar.classList.remove('hidden');
@@ -230,7 +306,7 @@
 
   function getScaledToolFilter() {
     const found = ALL_TOOLS_LIST.find((t) => t.id === activeAllTool);
-    if (!found) return 'none';
+    if (!found) return '';
     const ratio = toolStrength / 100;
     const b = Math.round(100 + (found.bright - 100) * ratio);
     const c = Math.round(100 + (found.contrast - 100) * ratio);
@@ -324,8 +400,9 @@
     out.height = baseCanvas.height;
     const oCtx = out.getContext('2d');
 
+    const combinedFilter = `${getScaledToolFilter()} ${getManualFilterString()}`.trim();
     oCtx.save();
-    oCtx.filter = `${getScaledToolFilter()} ${getManualFilterString()}`.trim();
+    if (combinedFilter) oCtx.filter = combinedFilter;
     oCtx.drawImage(baseCanvas, 0, 0, out.width, out.height);
     oCtx.restore();
 
@@ -358,7 +435,6 @@
 
     const splitX = Math.floor(w * splitRatio);
 
-    // Before
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, splitX, h);
@@ -366,7 +442,6 @@
     ctx.drawImage(beforeCanvas, 0, 0, w, h);
     ctx.restore();
 
-    // After
     ctx.save();
     ctx.beginPath();
     ctx.rect(splitX, 0, w - splitX, h);
@@ -374,7 +449,6 @@
     ctx.drawImage(afterCanvas, 0, 0, w, h);
     ctx.restore();
 
-    // Divider line & labels
     ctx.save();
     ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = Math.max(2, Math.round(w / 320));
@@ -417,6 +491,7 @@
       img.onload = () => {
         originalImage = img;
         committedBaseImage = null;
+        historyStack = [];
         rotationDeg = 0;
         flipH = false;
         flipV = false;
@@ -428,10 +503,13 @@
         slSat.value = 100;
         updateCropButtons();
         updateToolUI();
+        renderHistoryUI();
+        syncCreditsDisplay();
         canvas.classList.remove('hidden');
         if (emptyMsg) emptyMsg.classList.add('hidden');
         transformBar.classList.remove('hidden');
         baBar.classList.remove('hidden');
+        historyPanel.classList.remove('hidden');
         scheduleRender();
       };
       img.src = ev.target.result;
@@ -476,10 +554,36 @@
     scheduleRender();
   });
 
-  // Commit current tool/sliders into base image so another All Tool can be stacked on top
-  document.getElementById('btn-apply-tool-layer').addEventListener('click', () => {
+  document.getElementById('btn-apply-tool-layer').addEventListener('click', async () => {
     if (!originalImage) return;
+    const found = ALL_TOOLS_LIST.find((t) => t.id === activeAllTool);
+    const cost = found ? found.cost : 1;
+    const label = found ? `${found.name} (${toolStrength}%)` : 'Studio Edit';
+
+    if (!spendCredits(cost)) {
+      alert('Not enough credits! Please logout and sign in again to reset demo credits.');
+      return;
+    }
+
     const flattened = buildCurrentEditedCanvas(Math.max(originalImage.width, originalImage.height));
+    let finalDataUrl = flattened.toDataURL('image/png');
+
+    if (window.DibasPixAI_Hooks && typeof window.DibasPixAI_Hooks.onBeforeApplyTool === 'function') {
+      const hookRes = await window.DibasPixAI_Hooks.onBeforeApplyTool({
+        toolId: activeAllTool,
+        strength: toolStrength,
+        canvasDataUrl: finalDataUrl
+      });
+      if (hookRes && hookRes.dataUrl) finalDataUrl = hookRes.dataUrl;
+    }
+
+    const prevSource = committedBaseImage || originalImage;
+    historyStack.push({
+      label,
+      cost,
+      prevSrc: prevSource.src
+    });
+
     const savedImg = new Image();
     savedImg.onload = () => {
       committedBaseImage = savedImg;
@@ -494,9 +598,28 @@
       slSat.value = 100;
       updateCropButtons();
       updateToolUI();
+      renderHistoryUI();
       scheduleRender();
     };
-    savedImg.src = flattened.toDataURL('image/png');
+    savedImg.src = finalDataUrl;
+  });
+
+  document.getElementById('btn-undo-history').addEventListener('click', () => {
+    if (!originalImage || historyStack.length === 0) return;
+    const last = historyStack.pop();
+    if (historyStack.length === 0) {
+      committedBaseImage = null;
+      renderHistoryUI();
+      scheduleRender();
+      return;
+    }
+    const restoreImg = new Image();
+    restoreImg.onload = () => {
+      committedBaseImage = restoreImg;
+      renderHistoryUI();
+      scheduleRender();
+    };
+    restoreImg.src = last.prevSrc;
   });
 
   document.getElementById('btn-cancel-tool').addEventListener('click', () => {
@@ -557,23 +680,30 @@
     });
   });
 
+  // Sliders (Brightness, Contrast, Saturation)
   [slBright, slContrast, slSat].forEach((sl) => {
-    if (sl) sl.addEventListener('input', scheduleRender);
+    if (!sl) return;
+    sl.addEventListener('input', scheduleRender);
+    sl.addEventListener('change', scheduleRender);
   });
+
+  // Bottom Photo Repair & AI Tools (HD Quality, AI Retouch, Night View, AI Color)
+  function applyBottomPreset(presetKey) {
+    if (!originalImage) return;
+    const cfg = BOTTOM_PRESETS[presetKey];
+    if (!cfg) return;
+    slBright.value = cfg.bright;
+    slContrast.value = cfg.contrast;
+    slSat.value = cfg.sat;
+    scheduleRender();
+  }
 
   document.querySelectorAll('.tool-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      if (!originalImage) return;
-      const preset = btn.dataset.preset;
-      if (preset === 'hd') { slBright.value = 106; slContrast.value = 128; slSat.value = 112; }
-      if (preset === 'retouch') { slBright.value = 112; slContrast.value = 104; slSat.value = 115; }
-      if (preset === 'night') { slBright.value = 132; slContrast.value = 118; slSat.value = 108; }
-      if (preset === 'vivid') { slBright.value = 105; slContrast.value = 120; slSat.value = 145; }
-      scheduleRender();
+      applyBottomPreset(btn.dataset.preset);
     });
   });
 
-  const autoRetouchBtn = document.getElementById('btn-auto-retouch');
   if (autoRetouchBtn) {
     autoRetouchBtn.addEventListener('click', () => {
       if (!originalImage) return;
@@ -599,6 +729,7 @@
   resetEditBtn.addEventListener('click', () => {
     if (!originalImage) return;
     committedBaseImage = null;
+    historyStack = [];
     slBright.value = 100;
     slContrast.value = 100;
     slSat.value = 100;
@@ -612,6 +743,7 @@
     baSplitRange.value = 50;
     updateCropButtons();
     updateToolUI();
+    renderHistoryUI();
     scheduleRender();
   });
 
@@ -625,4 +757,6 @@
       link.click();
     });
   }
+
+  syncCreditsDisplay();
 })();
